@@ -1,0 +1,74 @@
+# Python version (pyenv local)
+.python-version
+
+# Virtual environment
+venv/
+.venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Data & models (large files — track explicitly if needed)
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.h5
+*.hdf5
+data/raw/
+data/processed/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Env vars
+.env
+.env.*
+
+# Logs & outputs
+logs/
+runs/
+wandb/
+mlruns/
+*.log
+
+# HuggingFace cache
+.cache/
+
+# PDFs (lecture slides, downloaded papers — large binaries, not version-controlled)
+*.pdf
+
+# Downloaded arXiv papers cache
+papers/
+paper_cache/
+
+# Pipeline outputs (commit dataset.json explicitly when ready)
+dataset.json
+audit_trail/
+
+# Misc large files
+*.tar.gz
+*.zip

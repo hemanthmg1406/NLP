@@ -1,0 +1,51 @@
+# Core data stack
+numpy
+pandas
+matplotlib
+seaborn
+
+# Web + crawling
+requests
+beautifulsoup4
+lxml
+arxiv
+
+# PDF parsing
+PyMuPDF
+pdfplumber
+pdfminer.six
+
+# LaTeX parsing
+pylatexenc
+TexSoup
+
+# NLP
+spacy
+scispacy
+nltk
+
+# ML / transformers (encoder only — no generation)
+torch
+transformers
+datasets
+accelerate
+tokenizers
+sentence-transformers
+
+# Tree edit distance (Zhang-Shasha 1989)
+zss
+
+# Graph construction
+networkx
+
+# Evaluation + calibration
+scikit-learn
+
+# Dev tools
+jupyter
+ipykernel
+ipywidgets
+tqdm
+
+# Utilities
+python-dotenv
