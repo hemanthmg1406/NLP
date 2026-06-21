@@ -52,17 +52,34 @@ import re
 
 import numpy as np
 import spacy
-from sentence_transformers import SentenceTransformer
 
 from context_extract import _split_sentences
 from mathml_tree import mathml_to_tree, tree_edit_distance
+
+# ---------------------------------------------------------------------------
+# Embedding model selection for Signal 5 (context similarity).
+#
+# "specter"   — allenai-specter: SentenceTransformer trained on scientific
+#               paper title+abstract pairs. Prose-aware, not math-aware.
+#               768-dim, SentenceTransformer API, normalize_embeddings built-in.
+#
+# "math_bert" — AnReu/math_pretrained_bert: BERT-base-cased further pre-trained
+#               on Math StackExchange in three stages — formula-formula coherence
+#               (LHS vs RHS prediction), formula-sentence coherence, then standard
+#               sentence-order prediction. Has 500 extra LaTeX tokens in the
+#               tokenizer. Math-aware, loaded via HuggingFace AutoModel,
+#               requires manual mean-pooling and L2 normalization.
+#
+# Change this constant and re-run to compare both models on identical input.
+# ---------------------------------------------------------------------------
+EMBEDDING_MODEL = "math_bert"
 
 # ---------------------------------------------------------------------------
 # Decision thresholds
 # Starting values from NLP baselines; calibrate on 5-paper hand-labeled dev set.
 # ---------------------------------------------------------------------------
 TREE_SIM_STRONG   = 0.85
-COSINE_POTENTIAL  = 0.75  # raised from 0.70: OR logic means cosine alone can fire
+COSINE_POTENTIAL  = 0.75
 JACCARD_POTENTIAL = 0.40
 
 # ---------------------------------------------------------------------------
@@ -99,6 +116,14 @@ _CUE_LEXICON = {
     "negate":     "negation",
     "violate":    "negation",
     "contradict": "negation",
+    # Operational dependency: fit/measurement output feeds into formula
+    # "fitted with (1) to extract C" → Eq 1 operationally produces C for Eq 2
+    "fit":        "operational dependency",
+    "extract":    "operational dependency",
+    "estimate":   "operational dependency",
+    "measure":    "operational dependency",
+    "determine":  "operational dependency",
+    "calibrate":  "operational dependency",
     # Limit
     "limit":      "limit",
     "approach":   "limit",
@@ -122,7 +147,13 @@ _DECORATOR_PREFIXES = frozenset({
 
 # Regex matching equation number patterns like (1), (3a), (A.1).
 # Used to detect explicit cross-references in surrounding prose.
-_EQNUM_RE = re.compile(r"\((\d+(?:\.\d+)?[a-z]?)\)")
+# Matches bare (1), (3a), (A.1) and also "Eq. (1)", "Eq.(1)", "eq (1)" variants.
+# The bare form is the standard but many papers write "Eq. (N)" — missing that
+# form caused operational references like "fitted with Gaussian function (1)" to
+# go undetected when the sentence used "Eq." prefix style.
+_EQNUM_RE = re.compile(
+    r"(?:(?:Eq|eq|equation|Equation)s?\.?\s*)?\((\d+(?:\.\d+)?[a-z]?)\)"
+)
 
 # Matches a leading LaTeX command or plain identifier on the LHS of an equation.
 # mathsf included alongside other decorators so Green's tensors (\mathsf{G}) are
@@ -136,8 +167,9 @@ _LHS_RE = re.compile(
 # ---------------------------------------------------------------------------
 # Lazy-loaded heavy resources (loaded once per process, not per paper).
 # ---------------------------------------------------------------------------
-_nlp      = None
-_embedder = None
+_nlp       = None
+_embedder  = None
+_tokenizer = None   # HuggingFace tokenizer; None when using SentenceTransformer
 
 
 def _get_nlp():
@@ -149,10 +181,32 @@ def _get_nlp():
 
 
 def _get_embedder():
-    """Load allenai-specter SentenceTransformer on first call."""
-    global _embedder
+    """Load the selected embedding model on first call (lazy singleton).
+
+    For "specter": returns a SentenceTransformer instance.
+    For "math_bert": returns a HuggingFace AutoModel instance and also
+    populates the global _tokenizer.
+    """
+    global _embedder, _tokenizer
     if _embedder is None:
-        _embedder = SentenceTransformer("allenai-specter")
+        if EMBEDDING_MODEL == "specter":
+            from sentence_transformers import SentenceTransformer
+            _embedder = SentenceTransformer("allenai-specter")
+        else:
+            # Import inside the branch so specter-only runs don't pull in torch.
+            import torch
+            from transformers import AutoTokenizer, AutoModel
+            _tokenizer = AutoTokenizer.from_pretrained("AnReu/math_pretrained_bert")
+            _embedder  = AutoModel.from_pretrained("AnReu/math_pretrained_bert",ignore_mismatched_sizes=True,)
+            _embedder.eval()
+            # Pick best available device: CUDA (DC 1.07), MPS (Mac M-series), CPU.
+            if torch.cuda.is_available():
+                device = "cuda"
+            elif torch.backends.mps.is_available():
+                device = "mps"
+            else:
+                device = "cpu"
+            _embedder = _embedder.to(device)
     return _embedder
 
 
@@ -194,6 +248,14 @@ def extract_lhs_symbol(latex):
     # Group 1 catches decorated forms like \hat{H} → 'H'; group 2 catches plain.
     inner = (m.group(1) or m.group(2) or "").strip()
     if not inner:
+        return None
+
+    # Guard: if the raw LHS has '(' immediately after the matched symbol, this
+    # is a function APPLICATION (e.g. H(t;θ) = ...) not a scalar definition.
+    # Returning None prevents conflating H and H(t;θ) as the same object —
+    # the source of the (1,3) false positive where generic H matched parameterized H.
+    remaining = lhs_raw[m.end():].lstrip()
+    if remaining.startswith("("):
         return None
 
     # Determine decorator prefix from the original lhs_raw.
@@ -299,6 +361,37 @@ def _extract_cue_verb(text, eqref_token):
 # When these appear near an equation, the equation may be a macroscopic rewrite
 # of a microscopic sum — a relation that TED and jaccard cannot detect because
 # symbols and tree structure change completely across the transformation.
+# Quantum zero-point / vacuum-coupling cues: when these appear near an equation,
+# that equation likely represents the quantum version of a classical expression.
+# Pairs a ZPF-context equation against equations that contain classical δ-terms
+# (δω, δΦ, δx) — the canonical classical-to-quantum substitution pattern in
+# optomechanics and electromechanics papers.
+_ZPF_CUES = re.compile(
+    r'\b(?:zero[- ]?point\s+(?:fluctuation|motion|amplitude|flux)|'
+    r'vacuum\s+(?:fluctuation|coupling|noise)|'
+    r'zpf\b|x_\{?zpf\}?|'
+    r'single\s+(?:phonon|photon|magnon)\s+coupling|'
+    r'quantize|second\s+quantiz)',
+    re.I,
+)
+
+# Classical differential/perturbation term in LaTeX.
+# Matches \delta followed by: a plain letter, a brace group, OR another LaTeX
+# command (\omega, \Phi, \Phi_s etc.). The original pattern missed \delta\omega
+# and \delta\Phi because they start with backslash, not a letter.
+_CLASSICAL_DELTA_RE = re.compile(
+    r'\\delta\s*(?:[A-Za-z]|\{[^}]+\}|\\[A-Za-z]+)'
+)
+
+# ZPF indicator in the equation's own LaTeX (not context, which is shared across
+# all equations in the same paragraph and therefore non-discriminating).
+# Matches zero-point fluctuation symbols: \zeta, x_zpf, \Phi_zpf, or the
+# string "zpf" appearing in a subscript or mathrm group.
+_ZPF_LATEX_RE = re.compile(
+    r'\\zeta|zpf|zero.?point|x_\{?(?:\\mathrm\{)?zpf|\\phi_\{?(?:\\mathrm\{)?zpf',
+    re.I,
+)
+
 _LIMIT_CUES = re.compile(
     r'\b(?:continuum\s+limit|thermodynamic\s+limit|mean.?field|replace\s+the\s+sum'
     r'|taking\s+[A-Z]\s*[→\-]\s*[∞\d]|density\s+of\s+states|infinite\s+volume'
@@ -439,32 +532,94 @@ def weighted_jaccard(ids_a, ids_b):
 
 
 # ---------------------------------------------------------------------------
-# Signal 3: SPECTER sentence embeddings
+# Signal 5: context embedding (SPECTER or math_pretrained_bert)
 # ---------------------------------------------------------------------------
 
-def encode_contexts(texts):
-    """Encode a list of context strings with allenai-specter.
+def _hf_mean_pool(texts, model, tokenizer, batch_size=32):
+    """Encode texts with a HuggingFace BERT model via mean pooling + L2 norm.
 
-    Embeddings are L2-normalized so cosine similarity reduces to a dot product.
-    Empty strings receive a zero vector — cosine against any real vector is 0.0.
+    Mean pooling over non-padding token embeddings is the standard approach
+    for extracting sentence-level representations from encoder models that
+    were not trained with a SentenceTransformer objective.
 
     Parameters
     ----------
     texts : list of str
-        One pre-equation context string per equation.
+    model : transformers.AutoModel
+        Must already be on the correct device.
+    tokenizer : transformers.AutoTokenizer
+    batch_size : int
+        Number of strings to encode per forward pass.
 
     Returns
     -------
     np.ndarray
-        Shape (len(texts), 768).
+        Shape (len(texts), hidden_dim), L2-normalized row vectors.
     """
-    embedder = _get_embedder()
-    return embedder.encode(
-        texts,
-        convert_to_numpy=True,
-        normalize_embeddings=True,
-        show_progress_bar=False,
-    )
+    import torch
+    import torch.nn.functional as F
+
+    device = next(model.parameters()).device
+    all_vecs = []
+
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i : i + batch_size]
+        encoded = tokenizer(
+            batch,
+            padding=True,
+            truncation=True,
+            max_length=512,
+            return_tensors="pt",
+        ).to(device)
+
+        with torch.no_grad():
+            out = model(**encoded)
+
+        # last_hidden_state: (batch, seq_len, hidden_dim)
+        token_emb = out.last_hidden_state
+        mask      = encoded["attention_mask"]
+
+        # Mask out padding, sum, divide by real token count.
+        mask_exp = mask.unsqueeze(-1).expand(token_emb.size()).float()
+        pooled   = torch.sum(token_emb * mask_exp, dim=1) / \
+                   torch.clamp(mask_exp.sum(dim=1), min=1e-9)
+
+        # L2 normalize: cosine similarity == dot product on normalized vecs.
+        normed = F.normalize(pooled, p=2, dim=1)
+        all_vecs.append(normed.cpu().numpy())
+
+    return np.concatenate(all_vecs, axis=0)
+
+
+def encode_contexts(texts):
+    """Encode context strings with the model selected by EMBEDDING_MODEL.
+
+    Returns L2-normalized row vectors. Cosine similarity between any two
+    vectors reduces to their dot product.
+
+    Parameters
+    ----------
+    texts : list of str
+        One combined (pre_text + equation LaTeX) string per equation.
+
+    Returns
+    -------
+    np.ndarray
+        Shape (len(texts), embedding_dim). Dimension is 768 for both
+        allenai-specter and AnReu/math_pretrained_bert.
+    """
+    model = _get_embedder()
+
+    if EMBEDDING_MODEL == "specter":
+        return model.encode(
+            texts,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+    else:
+        # math_bert: HuggingFace model, mean-pool manually.
+        return _hf_mean_pool(texts, model, _tokenizer)
 
 
 def cosine_similarity(vec_a, vec_b):
@@ -651,23 +806,56 @@ def build_relations(equations, table_index, tree, pre_texts,
         table = table_index.get(eq["eq_id"])
         math_trees[eq["number"]] = mathml_to_tree(table)
 
-    # --- Signal 4: SPECTER embeddings ---
-    # Embed pre_text + equation LaTeX together. Using pre_text alone causes
-    # all equations in the same section to share identical embeddings (same
-    # paragraph), making cosine ~1.0 for all pairs and useless as a signal.
-    # Appending the equation LaTeX ensures equations with the same surrounding
-    # prose but different mathematical content produce distinct vectors.
-    # Empty strings receive zero vectors via encode_contexts.
+    # --- Signal 4: Embeddings ---
+    # Embed pre_text + equation LaTeX + post_text together.
+    # pre_text alone causes all equations in the same section to share
+    # identical embeddings (same paragraph), making cosine ~1.0 for all pairs.
+    # LaTeX makes vectors distinct when math differs.
+    # post_text ("where X is...") is unique per equation and adds definitional
+    # context that captures what each equation's symbols mean — further
+    # separating equations that share surrounding prose.
     # latex_map already built above for Signal 1 — reuse it here.
     context_texts = [
-        ((pre_texts.get(num) or "") + " " + (latex_map.get(num) or "")).strip()
+        (
+            (pre_texts.get(num) or "") + " " +
+            (latex_map.get(num) or "") + " " +
+            (post_texts.get(num) or "")
+        ).strip()
         for num in numbers
     ]
     embeddings = encode_contexts(context_texts)
     # Map number → embedding vector for indexed access.
     emb_map = {num: embeddings[i] for i, num in enumerate(numbers)}
 
+    # --- Frequency-based jaccard stop-list ---
+    # Symbols appearing in more than half the paper's equations are high-frequency
+    # "noise" identifiers (e.g. θ as a global parameter, ℏ in every Hamiltonian).
+    # They inflate jaccard across unrelated pairs, producing false potential grades.
+    # Excluding them makes jaccard discriminate within-paper relations more precisely.
+    from collections import Counter
+    sym_freq = Counter()
+    for num in numbers:
+        for sym in (identifiers_map.get(num) or []):
+            sym_freq[sym] += 1
+    n_eqs = len(numbers)
+    # Threshold: >70% AND minimum 3 occurrences.
+    # The minimum-3 guard prevents the filter from activating on tiny papers
+    # (n ≤ 3): with n=2, every shared symbol hits 100% and would be filtered,
+    # eliminating the Jaccard signal entirely. Requiring cnt >= 3 means
+    # freq_stop is inactive when fewer than 3 equations are present.
+    freq_stop = {
+        sym for sym, cnt in sym_freq.items()
+        if cnt > 0.70 * n_eqs and cnt >= 3
+    }
+    if freq_stop:
+        print(f"  jaccard stop-list ({len(freq_stop)} symbols): "
+              f"{sorted(freq_stop)}")
+
     # --- Build pairwise relations ---
+    # Also track which (A, B) pairs fired strong via lhs_defines so we can
+    # immediately set the reverse direction to strong as well.
+    lhs_strong_pairs = set()
+
     for i, num_a in enumerate(numbers):
         ids_a = identifiers_map.get(num_a) or []
 
@@ -684,30 +872,111 @@ def build_relations(equations, table_index, tree, pre_texts,
             # Signal 2: definitional dependency.
             # Does equation B define a symbol that appears in equation A?
             # lhs_map[num_b] is the symbol B assigns; check it against A's ids.
+            #
+            # Two-level match to handle normalization inconsistencies between
+            # extract_lhs_symbol (which preserves decorator prefix as "mathcal_F")
+            # and extract_identifiers (which may strip notation-style prefixes
+            # and return just "F"). We allow base-form matching ONLY for
+            # notation-style decorators (mathcal, mathbb, mathscr, mathfrak,
+            # mathbf, mathsf) where the decorated and plain forms refer to the
+            # same physical quantity. We do NOT extend this to hat/bar/vec/tilde
+            # because those distinguish operators from scalars (hat_H ≠ H).
+            _NOTATION_PREFIXES = frozenset({
+                "mathcal", "mathbb", "mathscr", "mathfrak", "mathbf", "mathsf"
+            })
             lhs_b = lhs_map.get(num_b)
-            lhs_defines = bool(lhs_b and lhs_b in set(ids_a))
+            lhs_defines = False
+            if lhs_b:
+                ids_a_set = set(ids_a)
+                if lhs_b in ids_a_set:
+                    lhs_defines = True
+                else:
+                    # Try base-form match for notation-style decorators only.
+                    parts = lhs_b.split("_", 1)
+                    if len(parts) == 2 and parts[0] in _NOTATION_PREFIXES:
+                        lhs_defines = parts[1] in ids_a_set
 
             # Signal 3: structural similarity.
             t_sim = tree_edit_distance(math_trees[num_a], math_trees[num_b])
 
             # Signal 4: weighted Jaccard over identifier sets.
-            j_sim = weighted_jaccard(ids_a, ids_b)
+            # Use freq-filtered identifier sets: high-frequency symbols (appearing
+            # in >50% of the paper's equations) are excluded from both sets before
+            # the Jaccard calculation so they don't inflate unrelated pair scores.
+            ids_a_filt = [s for s in ids_a if s not in freq_stop]
+            ids_b_filt = [s for s in ids_b if s not in freq_stop]
+            j_sim = weighted_jaccard(ids_a_filt, ids_b_filt)
 
-            # Signal 5: cosine similarity of SPECTER embeddings.
+            # Signal 5: cosine similarity of context embeddings.
             c_sim = cosine_similarity(emb_map[num_a], emb_map[num_b])
 
-            # Exact symbol intersection — used to name shared identifiers in the
-            # potential description so the grader sees a concrete semantic link.
-            shared = set(ids_a) & set(ids_b)
+            # Exact symbol intersection over filtered sets — used to name shared
+            # identifiers in the potential description so the grader sees a
+            # concrete semantic link. Uses filtered sets so freq-noise symbols
+            # don't appear in the description either.
+            shared = set(ids_a_filt) & set(ids_b_filt)
 
             grade, desc = classify_relation(
                 t_sim, j_sim, c_sim, ref_type, shared, lhs_defines
             )
 
+            # Track lhs_defines strong pairs for bidirectional upgrade below.
+            if grade == "strong" and lhs_defines and ref_type is None:
+                lhs_strong_pairs.add((num_a, num_b))
+
             entry = {"grade": grade}
             if desc:
                 entry["description"] = desc
             result[num_a][num_b] = entry
+
+    # Post-processing: classical-to-quantum (ZPF) derivation detection.
+    # Pattern: classical equations contain \delta-prefixed symbols (δω, δΦ, δx);
+    # the quantum equation evaluates that classical expression at one zero-point
+    # fluctuation, so its LaTeX contains ζ_zpf, x_zpf, or similar ZPF symbols.
+    # Symbols change completely across this substitution — TED and Jaccard fail.
+    #
+    # Detection uses the equation's OWN LaTeX, NOT context text. Context is
+    # shared across all equations in the same paragraph, making it non-
+    # discriminating when multiple equations appear in the same derivation block.
+    zpf_nums = set()
+    classical_delta_nums = set()
+    for eq in equations:
+        num = eq["number"]
+        lat = eq["latex"]
+        if _ZPF_LATEX_RE.search(lat):
+            zpf_nums.add(num)
+        if _CLASSICAL_DELTA_RE.search(lat):
+            classical_delta_nums.add(num)
+    if zpf_nums and classical_delta_nums:
+        print(f"  ZPF equations (by LaTeX): {sorted(zpf_nums)}, "
+              f"classical-δ equations: {sorted(classical_delta_nums)}")
+    for q_num in zpf_nums:
+        for c_num in classical_delta_nums:
+            if c_num == q_num:
+                continue
+            for src, tgt, label in [
+                (c_num, q_num, "classical-to-quantum derivation"),
+                (q_num, c_num, "quantum coupling derived from classical expression"),
+            ]:
+                current = result.get(src, {}).get(tgt, {}).get("grade", "none")
+                if current not in ("strong",):
+                    result[src][tgt] = {
+                        "grade": "strong",
+                        "description": label,
+                    }
+
+    # Post-processing: bidirectional definitional dependency.
+    # When (A, B) = strong "defines component" (B defines a symbol used in A),
+    # the reverse direction (B, A) = "component used in derivation" is equally
+    # informative: from B's perspective, A is the equation that depends on what
+    # B defines. Only upgrade if the current grade is lower than strong.
+    for num_a, num_b in lhs_strong_pairs:
+        current = result.get(num_b, {}).get(num_a, {}).get("grade", "none")
+        if current != "strong":
+            result[num_b][num_a] = {
+                "grade": "strong",
+                "description": "component used in derivation",
+            }
 
     # Post-processing: full DAG reachability with λ-decay path scoring.
     # Replaces the earlier depth-2 cutoff with complete BFS over the strong-edge

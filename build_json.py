@@ -43,8 +43,8 @@ from relations_extractor import build_relations
 # Config — adjust these as the pipeline matures
 #---
 
-SEED        = 732# change this to get a different random batch of papers
-LIMIT       = 1   # papers per run
+SEED        = 321# change this to get a different random batch of papers
+LIMIT       = 2   # papers per run
 N_EQUATIONS = 7    # equations per paper to produce JSON for
 
 CACHE_DIR   = Path("cache")
