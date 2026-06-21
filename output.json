@@ -1,0 +1,432 @@
+{
+  "2505.09857": {
+    "1": {
+      "equation": "\\frac{d}{dt}\\boldsymbol{\\psi}(t)=-iH(t)\\boldsymbol{\\psi}(t),\\quad\\boldsymbol{\\psi}(0)=\\boldsymbol{\\psi}_{0}\\in\\mathbb{C}^{N},",
+      "meaning": "From 'Governing Equation: Schrödinger’s Equation': Governing Equation: Schrödinger’s. In context: The time evolution of the state vector from an initial state $\\boldsymbol{\\psi}_{0}$ in a closed quantum system is governed by Schrödinger’s equation444We always choose our units so that $\\hbar=1$ .",
+      "symbols": {
+        "C": "constants that can depend on the solution",
+        "N": "the size of the complex-valued matrix system."
+      },
+      "relations": {
+        "2": {
+          "grade": "strong",
+          "description": "equivalent — shared form and symbols (C, H, N, boldsymbol_psi)"
+        },
+        "3": {
+          "grade": "strong",
+          "description": "defines component"
+        },
+        "4": {
+          "grade": "potential",
+          "description": "indirect dependency via (2) [path_score=0.25]"
+        },
+        "5": {
+          "grade": "potential",
+          "description": "shared symbols (C, H, N, mathbb_C), contextually related [cos=0.89, j=0.37]"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Governing Equation: Schrödinger’s Equation",
+        "section_is_generic": false,
+        "name_derived": "Governing Equation: Schrödinger’s",
+        "pre_context_120": "The time evolution of the state vector from an initial state $\\boldsymbol{\\psi}_{0}$ in a closed quantum system is gover",
+        "post_context_80": "where $H(t)\\in\\mathbb{C}^{N\\times N}$ is the Hamiltonian of the system. We assum",
+        "abbreviation_sh": "none",
+        "intro_sentence": "The time evolution of the state vector from an initial state $\\boldsymbol{\\psi}_{0}$ in a closed quantum system is gover",
+        "cross_ref": "In what follows, we convert Schrödinger’s equation (1) into its real-valued formulation, which is commonly done in numer",
+        "respectively_syms": "none",
+        "identifiers": [
+          "boldsymbol_psi",
+          "C",
+          "H",
+          "mathbb_C",
+          "N",
+          "psi"
+        ],
+        "symbol_defs_found": [
+          "C",
+          "N"
+        ],
+        "meaning_method": "layered:theorem+named_eq+section+schwartz_hearst+intro_sent+post_where+respectively+cross_ref+symdefs"
+      }
+    },
+    "2": {
+      "equation": "\\frac{d}{dt}\\boldsymbol{\\psi}(t)=-iH(t;\\boldsymbol{\\theta})\\boldsymbol{\\psi}(t),\\quad\\boldsymbol{\\psi}(0)=\\boldsymbol{\\psi}_{0}\\in\\mathbb{C}^{N}.",
+      "meaning": "From 'Governing Equation: Schrödinger’s Equation': Governing Equation: Schrödinger’s. In context: We assume that the Hamiltonian is controlled by a function parametrized by ${N_{\\rm P}}$ values collected in the control vector $\\boldsymbol{\\theta}\\in\\mathbb{R}^{{N_{\\rm P}}}$ .",
+      "symbols": {
+        "C": "constants that can depend on the solution",
+        "N": "the size of the complex-valued matrix system."
+      },
+      "relations": {
+        "1": {
+          "grade": "strong",
+          "description": "equivalent — shared form and symbols (C, H, N, boldsymbol_psi)"
+        },
+        "3": {
+          "grade": "strong",
+          "description": "defines component"
+        },
+        "4": {
+          "grade": "potential",
+          "description": "indirect dependency via (1) [path_score=0.25]"
+        },
+        "5": {
+          "grade": "strong",
+          "description": "equivalent — shared form and symbols (C, H, N, boldsymbol_theta)"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "shared symbols (boldsymbol_theta, theta), contextually related [cos=0.81, j=0.13]"
+        },
+        "7": {
+          "grade": "potential",
+          "description": "shared symbols (boldsymbol_theta, theta), contextually related [cos=0.77, j=0.12]"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Governing Equation: Schrödinger’s Equation",
+        "section_is_generic": false,
+        "name_derived": "Governing Equation: Schrödinger’s",
+        "pre_context_120": "The time evolution of the state vector from an initial state $\\boldsymbol{\\psi}_{0}$ in a closed quantum system is gover",
+        "post_context_80": "none",
+        "abbreviation_sh": "none",
+        "intro_sentence": "We assume that the Hamiltonian is controlled by a function parametrized by ${N_{\\rm P}}$ values collected in the control",
+        "cross_ref": "none",
+        "respectively_syms": "none",
+        "identifiers": [
+          "boldsymbol_psi",
+          "boldsymbol_theta",
+          "C",
+          "H",
+          "mathbb_C",
+          "N",
+          "psi",
+          "theta"
+        ],
+        "symbol_defs_found": [
+          "C",
+          "N"
+        ],
+        "meaning_method": "layered:theorem+named_eq+section+schwartz_hearst+intro_sent+post_where+respectively+cross_ref+symdefs"
+      }
+    },
+    "3": {
+      "equation": "H(t;\\boldsymbol{\\theta})=H_{d}+H_{c}(t;\\boldsymbol{\\theta}),",
+      "meaning": "From 'Governing Equation: Schrödinger’s Equation': Governing Equation: Schrödinger’s. In context: Accordingly, we write Schrödinger’s equation as We make an additional assumption that the Hamiltonian can be decomposed into drift and control Hamiltonians",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "potential",
+          "description": "shared symbols (H), contextually related [cos=0.97, j=0.11]"
+        },
+        "2": {
+          "grade": "potential",
+          "description": "shared symbols (H, boldsymbol_theta, theta), contextually related [cos=0.99, j=0.30]"
+        },
+        "4": {
+          "grade": "strong",
+          "description": "defines component"
+        },
+        "5": {
+          "grade": "potential",
+          "description": "shared symbols (H, boldsymbol_theta, theta), contextually related [cos=0.90, j=0.26]"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "shared symbols (boldsymbol_theta, theta), contextually related [cos=0.81, j=0.16]"
+        },
+        "7": {
+          "grade": "potential",
+          "description": "shared symbols (boldsymbol_theta, theta), contextually related [cos=0.77, j=0.15]"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Governing Equation: Schrödinger’s Equation",
+        "section_is_generic": false,
+        "name_derived": "Governing Equation: Schrödinger’s",
+        "pre_context_120": "The time evolution of the state vector from an initial state $\\boldsymbol{\\psi}_{0}$ in a closed quantum system is gover",
+        "post_context_80": "none",
+        "abbreviation_sh": "none",
+        "intro_sentence": "Accordingly, we write Schrödinger’s equation as We make an additional assumption that the Hamiltonian can be decomposed ",
+        "cross_ref": "It should be noted for the quantum optimal control problem that in addition to the matrix $A$ being the sum of a drift a",
+        "respectively_syms": "none",
+        "identifiers": [
+          "boldsymbol_theta",
+          "H",
+          "H_c",
+          "H_d",
+          "theta"
+        ],
+        "symbol_defs_found": [],
+        "meaning_method": "layered:theorem+named_eq+section+schwartz_hearst+intro_sent+post_where+respectively+cross_ref+symdefs"
+      }
+    },
+    "4": {
+      "equation": "H_{d}=\\sum_{q=1}^{{N_{Q}}}\\left(\\omega_{q}a_{q}^{\\dagger}a_{q}-\\frac{\\xi_{q}}{2}a_{q}^{\\dagger}a_{q}^{\\dagger}a_{q}a_{q}-\\sum_{p>q}\\xi_{pq}a_{p}^{\\dagger}a_{p}a_{q}^{\\dagger}a_{q}\\right).",
+      "meaning": "From 'Governing Equation: Schrödinger’s Equation': Governing Equation: Schrödinger’s. In context: For a single $n$ -level qudit, the lowering operator takes the form and the raising operator is given by $a^{\\dagger}$ .",
+      "symbols": {
+        "xi_q": "the ground state transition frequency"
+      },
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "potential",
+          "description": "shared symbols (H_d), contextually related [cos=0.86, j=0.09]"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Governing Equation: Schrödinger’s Equation",
+        "section_is_generic": false,
+        "name_derived": "Governing Equation: Schrödinger’s",
+        "pre_context_120": "Hamiltonians are often given in terms of raising/lowering operators. For a single $n$ -level qudit, the lowering operato",
+        "post_context_80": "none",
+        "abbreviation_sh": "none",
+        "intro_sentence": "For a single $n$ -level qudit, the lowering operator takes the form and the raising operator is given by $a^{\\dagger}$ .",
+        "cross_ref": "Using the model (4), the drift Hamiltonian is In the model, the resonator is treated no differently than another qudit, ",
+        "respectively_syms": "none",
+        "identifiers": [
+          "a_p",
+          "a_q",
+          "H_d",
+          "N_Q",
+          "omega_q",
+          "xi_pq",
+          "xi_q"
+        ],
+        "symbol_defs_found": [
+          "xi_q"
+        ],
+        "meaning_method": "layered:theorem+named_eq+section+schwartz_hearst+intro_sent+post_where+respectively+cross_ref+symdefs"
+      }
+    },
+    "5": {
+      "equation": "\\frac{d}{dt}U(t)=-iH(t;\\boldsymbol{\\theta})U(t),\\quad U(0)=U_{0}\\in\\mathbb{C}^{N\\times E}.",
+      "meaning": "From the 'Optimal Control Problem' section. In context: that form a basis of the possible initial states that the gate may be applied to",
+      "symbols": {
+        "C": "constants that can depend on the solution",
+        "N": "the size of the complex-valued matrix system."
+      },
+      "relations": {
+        "1": {
+          "grade": "potential",
+          "description": "shared symbols (C, H, N, mathbb_C), contextually related [cos=0.89, j=0.37]"
+        },
+        "2": {
+          "grade": "strong",
+          "description": "equivalent — shared form and symbols (C, H, N, boldsymbol_theta)"
+        },
+        "3": {
+          "grade": "strong",
+          "description": "defines component"
+        },
+        "4": {
+          "grade": "potential",
+          "description": "indirect dependency via (2) [path_score=0.25]"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "shared symbols (E, U, boldsymbol_theta, theta), contextually related [cos=0.85, j=0.31]"
+        },
+        "7": {
+          "grade": "potential",
+          "description": "shared symbols (U, boldsymbol_theta, theta), contextually related [cos=0.77, j=0.19]"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Optimal Control Problem",
+        "section_is_generic": false,
+        "name_derived": "Optimal Control Problem",
+        "pre_context_120": "More precisely, we control the time evolution of $E$ state vectors555For $n$ qubits, $E=2^{n}$ . If each qubit is modele",
+        "post_context_80": "A state-to-state transfer problem is equivalent to a gate design problem where $",
+        "abbreviation_sh": "none",
+        "intro_sentence": "that form a basis of the possible initial states that the gate may be applied to",
+        "cross_ref": "none",
+        "respectively_syms": "none",
+        "identifiers": [
+          "boldsymbol_theta",
+          "C",
+          "E",
+          "H",
+          "mathbb_C",
+          "N",
+          "theta",
+          "U",
+          "U_0"
+        ],
+        "symbol_defs_found": [
+          "C",
+          "N"
+        ],
+        "meaning_method": "layered:theorem+named_eq+section+schwartz_hearst+intro_sent+post_where+respectively+cross_ref+symdefs"
+      }
+    },
+    "6": {
+      "equation": "\\mathcal{F}(U(T;\\boldsymbol{\\theta}),U_{\\text{target}})\\coloneqq\\frac{1}{E^{2}}\\left|\\left\\langle U(T;\\boldsymbol{\\theta}),U_{\\text{target}}\\right\\rangle_{F}\\right|^{2}.",
+      "meaning": "From the 'Optimal Control Problem' section. In context: The notation $\\left\\langle\\boldsymbol{a},\\boldsymbol{b}\\right\\rangle$ , without a subscript, denotes the dot product (for real vectors) or Hermitian inner product (for complex vectors).",
+      "symbols": {
+        "T": "action of a desired gate in time"
+      },
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "potential",
+          "description": "shared symbols (boldsymbol_theta, theta), contextually related [cos=0.81, j=0.13]"
+        },
+        "3": {
+          "grade": "potential",
+          "description": "shared symbols (boldsymbol_theta, theta), contextually related [cos=0.81, j=0.16]"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "potential",
+          "description": "shared symbols (E, U, boldsymbol_theta, theta), contextually related [cos=0.85, j=0.31]"
+        },
+        "7": {
+          "grade": "potential",
+          "description": "shared symbols (F, T, U, U_target) [j=0.70]"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Optimal Control Problem",
+        "section_is_generic": false,
+        "name_derived": "Optimal Control Problem",
+        "pre_context_120": "The action of a gate is defined by its action on the elements of a basis, so to implement a gate operator it is sufficie",
+        "post_context_80": "none",
+        "abbreviation_sh": "none",
+        "intro_sentence": "The notation $\\left\\langle\\boldsymbol{a},\\boldsymbol{b}\\right\\rangle$ , without a subscript, denotes the dot product (fo",
+        "cross_ref": "none",
+        "respectively_syms": "none",
+        "identifiers": [
+          "boldsymbol_theta",
+          "E",
+          "F",
+          "mathcal_F",
+          "T",
+          "theta",
+          "U",
+          "U_target"
+        ],
+        "symbol_defs_found": [
+          "T"
+        ],
+        "meaning_method": "layered:theorem+named_eq+section+schwartz_hearst+intro_sent+post_where+respectively+cross_ref+symdefs"
+      }
+    },
+    "7": {
+      "equation": "\\mathcal{I}(U(T;\\boldsymbol{\\theta}),U_{\\text{target}})=1-\\mathcal{F}(U(T;\\boldsymbol{\\theta}),U_{\\text{target}}).",
+      "meaning": "From the 'Optimal Control Problem' section. In context: It is common for optimization software to expect an optimization problem to be formulated as a minimization problem, so instead of maximizing the fidelity, we often consider the equivalent problem of minimizing the trace infidelity",
+      "symbols": {
+        "T": "action of a desired gate in time"
+      },
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "potential",
+          "description": "shared symbols (boldsymbol_theta, theta), contextually related [cos=0.77, j=0.12]"
+        },
+        "3": {
+          "grade": "potential",
+          "description": "shared symbols (boldsymbol_theta, theta), contextually related [cos=0.77, j=0.15]"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "potential",
+          "description": "shared symbols (U, boldsymbol_theta, theta), contextually related [cos=0.77, j=0.19]"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "shared symbols (F, T, U, U_target) [j=0.70]"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Optimal Control Problem",
+        "section_is_generic": false,
+        "name_derived": "Optimal Control Problem",
+        "pre_context_120": "It is common for optimization software to expect an optimization problem to be formulated as a minimization problem, so ",
+        "post_context_80": "none",
+        "abbreviation_sh": "none",
+        "intro_sentence": "It is common for optimization software to expect an optimization problem to be formulated as a minimization problem, so ",
+        "cross_ref": "Consequently, an optimizer may try to minimize the infidelity (7) by increasing the spectral norm of $\\tilde{U}(T;\\bolds",
+        "respectively_syms": "none",
+        "identifiers": [
+          "boldsymbol_theta",
+          "F",
+          "I",
+          "mathcal_F",
+          "mathcal_I",
+          "T",
+          "theta",
+          "U",
+          "U_target"
+        ],
+        "symbol_defs_found": [
+          "T"
+        ],
+        "meaning_method": "layered:theorem+named_eq+section+schwartz_hearst+intro_sent+post_where+respectively+cross_ref+symdefs"
+      }
+    }
+  }
+}

@@ -1,0 +1,319 @@
+{
+  "2504.07341": {
+    "1": {
+      "equation": "\\mathcal{L}\\ket{\\psi_{x}}^{\\otimes s}_{S}\\ket{0}_{M}\\ket{0}_{A}=\\sum_{x^{\\prime}=1}^{m}c_{x^{\\prime}|x}\\ket{x^{\\prime}}_{M}\\ket{\\mathrm{junk}_{x^{\\prime}}}_{S,A}",
+      "meaning": "Reversible learning transformation that encodes the inferred state label in memory while moving the remaining degrees of freedom into junk.",
+      "symbols": {
+        "mathcal{L}": "reversible learning algorithm",
+        "psi_x": "unknown state being learned",
+        "s": "number of copies used for learning",
+        "S": "system register holding the input copies",
+        "M": "memory register storing the learning outcome",
+        "A": "ancilla register used to make the process reversible",
+        "c_xprime|x": "coefficient for output label x' conditioned on input state x",
+        "junk_xprime": "residual state on the system and ancilla registers"
+      },
+      "relations": {
+        "2": {
+          "grade": "potential",
+          "description": "same learn-to-erase framework applied to shallow-circuit states"
+        },
+        "3": {
+          "grade": "potential",
+          "description": "same learn-to-erase framework applied to doped stabilizer states"
+        },
+        "4": {
+          "grade": "potential",
+          "description": "same learn-to-erase framework applied to matrix product states"
+        },
+        "5": {
+          "grade": "potential",
+          "description": "same learn-to-erase framework applied to low-degree phase states"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "contrasts the efficient reversible-learning setting with a harder ensemble case"
+        },
+        "7": {
+          "grade": "strong",
+          "description": "directly supports the correctness proof of the erasure protocol"
+        }
+      },
+      "audit-trail": {
+        "extract_eq": "Found enumerated equation (1)",
+        "collect_context": "Used the surrounding paragraph on reversible learning and coherent measurements",
+        "find_symbol": "Detected mathcal{L}, psi_x, s, S, M, A, c_xprime|x, junk_xprime",
+        "extract_symbol_name": "Mapped the text 'reversible learning algorithm' to mathcal{L} and 'ancilla' to A",
+        "meaning_extractor": "Selected 'reversible learning algorithm' as the equation meaning"
+      }
+    },
+    "2": {
+      "equation": "W=\\Theta(nd)k_{B}T\\ln 2",
+      "meaning": "Work cost for erasing shallow-circuit states, scaling linearly with system size and circuit depth.",
+      "symbols": {
+        "W": "work cost",
+        "n": "number of qubits",
+        "d": "circuit depth",
+        "k_B": "Boltzmann constant",
+        "T": "temperature"
+      },
+      "relations": {
+        "1": {
+          "grade": "potential",
+          "description": "an application of the same erasure framework"
+        },
+        "3": {
+          "grade": "potential",
+          "description": "another example of work-cost scaling for a different state family"
+        },
+        "4": {
+          "grade": "potential",
+          "description": "another example of work-cost scaling for a different state family"
+        },
+        "5": {
+          "grade": "potential",
+          "description": "another example of work-cost scaling for a different state family"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "contrasts a learnable family with a harder Haar/pseudorandom ensemble"
+        },
+        "7": {
+          "grade": "potential",
+          "description": "supported by the reversible-learning correctness proof"
+        }
+      },
+      "audit-trail": {
+        "extract_eq": "Found enumerated equation (2)",
+        "collect_context": "Used the shallow-circuit-state paragraph immediately preceding the equation",
+        "find_symbol": "Detected W, n, d, k_B, T",
+        "extract_symbol_name": "Mapped 'work cost', 'depth', and 'temperature' from nearby prose",
+        "meaning_extractor": "Selected the shallow-circuit erasure cost sentence as meaning"
+      }
+    },
+    "3": {
+      "equation": "W=\\Theta(n^{2}(t+1))k_{B}T\\ln 2",
+      "meaning": "Work cost for erasing t-doped stabilizer states, growing with the system size and the amount of magic.",
+      "symbols": {
+        "W": "work cost",
+        "n": "number of qubits",
+        "t": "number of T gates / amount of magic",
+        "k_B": "Boltzmann constant",
+        "T": "temperature"
+      },
+      "relations": {
+        "1": {
+          "grade": "potential",
+          "description": "an application of the same erasure framework"
+        },
+        "2": {
+          "grade": "potential",
+          "description": "another worked example with a different state family"
+        },
+        "4": {
+          "grade": "potential",
+          "description": "another example of work-cost scaling for a different state family"
+        },
+        "5": {
+          "grade": "potential",
+          "description": "another example of work-cost scaling for a different state family"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "contrasts a learnable family with a harder Haar/pseudorandom ensemble"
+        },
+        "7": {
+          "grade": "potential",
+          "description": "supported by the reversible-learning correctness proof"
+        }
+      },
+      "audit-trail": {
+        "extract_eq": "Found enumerated equation (3)",
+        "collect_context": "Used the paragraph on t-doped stabilizer states before the equation",
+        "find_symbol": "Detected W, n, t, k_B, T",
+        "extract_symbol_name": "Mapped 'magic' to t and 'work cost' to W",
+        "meaning_extractor": "Selected the stabilizer-state erasure cost sentence as meaning"
+      }
+    },
+    "4": {
+      "equation": "W=\\mathrm{exp}(\\tilde{\\Theta}(\\mathcal{S}))k_{B}T\\ln 2",
+      "meaning": "Work cost for erasing matrix product states, which grows exponentially with entanglement entropy.",
+      "symbols": {
+        "W": "work cost",
+        "mathcal{S}": "maximal entanglement entropy across every cut",
+        "k_B": "Boltzmann constant",
+        "T": "temperature"
+      },
+      "relations": {
+        "1": {
+          "grade": "potential",
+          "description": "an application of the same erasure framework"
+        },
+        "2": {
+          "grade": "potential",
+          "description": "another worked example with a different state family"
+        },
+        "3": {
+          "grade": "potential",
+          "description": "another worked example with a different state family"
+        },
+        "5": {
+          "grade": "potential",
+          "description": "another example of work-cost scaling for a different state family"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "contrasts a learnable family with a harder Haar/pseudorandom ensemble"
+        },
+        "7": {
+          "grade": "potential",
+          "description": "supported by the reversible-learning correctness proof"
+        }
+      },
+      "audit-trail": {
+        "extract_eq": "Found enumerated equation (4)",
+        "collect_context": "Used the paragraph on matrix product states and entanglement entropy",
+        "find_symbol": "Detected W, mathcal{S}, k_B, T",
+        "extract_symbol_name": "Mapped 'maximal entanglement entropy' to mathcal{S}",
+        "meaning_extractor": "Selected the exponential-in-entanglement sentence as meaning"
+      }
+    },
+    "5": {
+      "equation": "W=\\Theta(n^{k})k_{B}T\\ln 2",
+      "meaning": "Work cost for erasing low-degree phase states, scaling polynomially with degree k.",
+      "symbols": {
+        "W": "work cost",
+        "n": "number of qubits",
+        "k": "maximum polynomial degree / interaction degree",
+        "k_B": "Boltzmann constant",
+        "T": "temperature"
+      },
+      "relations": {
+        "1": {
+          "grade": "potential",
+          "description": "an application of the same erasure framework"
+        },
+        "2": {
+          "grade": "potential",
+          "description": "another worked example with a different state family"
+        },
+        "3": {
+          "grade": "potential",
+          "description": "another worked example with a different state family"
+        },
+        "4": {
+          "grade": "potential",
+          "description": "another worked example with a different state family"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "contrasts a learnable family with a harder Haar/pseudorandom ensemble"
+        },
+        "7": {
+          "grade": "potential",
+          "description": "supported by the reversible-learning correctness proof"
+        }
+      },
+      "audit-trail": {
+        "extract_eq": "Found enumerated equation (5)",
+        "collect_context": "Used the paragraph on low-degree phase states",
+        "find_symbol": "Detected W, n, k, k_B, T",
+        "extract_symbol_name": "Mapped 'degree' to k and 'work cost' to W",
+        "meaning_extractor": "Selected the low-degree phase-state erasure sentence as meaning"
+      }
+    },
+    "6": {
+      "equation": "W_{\\mathrm{Haar}}=\\log_{2}\\binom{N+2^{n}-1}{N}k_{B}T\\ln 2",
+      "meaning": "Landauer work cost for erasing N copies of Haar-random n-qubit states in the symmetric subspace setting.",
+      "symbols": {
+        "W_Haar": "Landauer work cost for the Haar ensemble",
+        "N": "number of copies",
+        "n": "number of qubits per copy",
+        "k_B": "Boltzmann constant",
+        "T": "temperature"
+      },
+      "relations": {
+        "1": {
+          "grade": "potential",
+          "description": "same erasure framework, but for a hard ensemble"
+        },
+        "2": {
+          "grade": "potential",
+          "description": "contrasts a learnable family with a harder Haar/pseudorandom ensemble"
+        },
+        "3": {
+          "grade": "potential",
+          "description": "contrasts a learnable family with a harder Haar/pseudorandom ensemble"
+        },
+        "4": {
+          "grade": "potential",
+          "description": "contrasts a learnable family with a harder Haar/pseudorandom ensemble"
+        },
+        "5": {
+          "grade": "potential",
+          "description": "contrasts a learnable family with a harder Haar/pseudorandom ensemble"
+        },
+        "7": {
+          "grade": "potential",
+          "description": "the correctness proof underpins the protocol used in the hardness comparison"
+        }
+      },
+      "audit-trail": {
+        "extract_eq": "Found enumerated equation (6)",
+        "collect_context": "Used the paragraph on pseudorandom states and Haar-ensemble erasure cost",
+        "find_symbol": "Detected W_Haar, N, n, k_B, T",
+        "extract_symbol_name": "Mapped the Haar-ensemble work cost notation to W_Haar",
+        "meaning_extractor": "Selected the Haar-ensemble Landauer-cost sentence as meaning"
+      }
+    },
+    "7": {
+      "equation": "\\begin{split}&(\\bra{x}_{M^{\\prime}}\\bra{\\psi_{x}}^{\\otimes s}_{S}\\bra{0}_{M,A})\\Bigl(\\mathcal{L}^{\\dagger}\\sum_{x^{\\prime}}c_{x^{\\prime}|x}\\ket{x^{\\prime}}_{M^{\\prime}}\\ket{x^{\\prime}}_{M}\\ket{\\mathrm{junk}_{x^{\\prime}}}_{S,A}\\Bigr)\\\\\\n&=\\sum_{x^{\\prime}}c_{x^{\\prime}|x}\\innerproduct{x}{x^{\\prime}}_{M^{\\prime}}\\Bigl(\\bra{\\psi_{x}}^{\\otimes s}_{S}\\bra{0}_{M,A}\\mathcal{L}^{\\dagger}\\Bigr)\\!\\left(\\ket{x^{\\prime}}_{M}\\ket{\\mathrm{junk}_{x^{\\prime}}}_{S,A}\\right)\\\\\\n&=c_{x|x}\\Bigl(\\sum_{x^{\\prime\\prime}}c^{*}_{x^{\\prime\\prime}|x}\\bra{x^{\\prime\\prime}}_{M}\\bra{\\mathrm{junk}_{x^{\\prime\\prime}}}_{S,A}\\Bigr)\\ket{x}_{M}\\ket{\\mathrm{junk}_{x}}_{S,A}\\\\\\n&=|c_{x|x}|^{2}\\geq p_{\\mathrm{succ}},\\end{split}",
+      "meaning": "Overlap calculation that lower-bounds the success probability and proves correctness of the erasure protocol.",
+      "symbols": {
+        "mathcal{L}": "reversible learning algorithm / unitary",
+        "x": "hidden class label",
+        "M_prime": "auxiliary memory register",
+        "psi_x": "unknown state being learned",
+        "s": "number of copies used for learning",
+        "S": "system register",
+        "M": "memory register",
+        "A": "ancilla register",
+        "c_xprime|x": "coefficient for output label x' conditioned on input state x",
+        "p_succ": "learning success probability"
+      },
+      "relations": {
+        "1": {
+          "grade": "strong",
+          "description": "direct correctness proof for the reversible learning transformation"
+        },
+        "2": {
+          "grade": "potential",
+          "description": "supports the protocol used to achieve the shallow-circuit erasure cost"
+        },
+        "3": {
+          "grade": "potential",
+          "description": "supports the protocol used to achieve the stabilizer-state erasure cost"
+        },
+        "4": {
+          "grade": "potential",
+          "description": "supports the protocol used to achieve the matrix-product-state erasure cost"
+        },
+        "5": {
+          "grade": "potential",
+          "description": "supports the protocol used to achieve the phase-state erasure cost"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "supports the protocol used in the hardness comparison"
+        }
+      },
+      "audit-trail": {
+        "extract_eq": "Found enumerated equation (7)",
+        "collect_context": "Used the proof-sketch paragraph before the equation and the success-probability paragraph after it",
+        "find_symbol": "Detected mathcal{L}, x, M_prime, psi_x, s, S, M, A, c_xprime|x, p_succ",
+        "extract_symbol_name": "Mapped p_succ to success probability and M_prime to auxiliary memory",
+        "meaning_extractor": "Selected the overlap/success-probability proof step as meaning"
+      }
+    }
+  }
+}

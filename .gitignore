@@ -58,12 +58,19 @@ mlruns/
 # HuggingFace cache
 .cache/
 
-# PDFs (lecture slides, downloaded papers — large binaries, not version-controlled)
 *.pdf
 
 # Downloaded arXiv papers cache
 papers/
 paper_cache/
+/cache/
+
+# Local rendering and review artifacts
+/tmp/
+/review.html
+/review.csv
+/skipped.csv
+/symbols_review.txt
 
 # Pipeline outputs (commit dataset.json explicitly when ready)
 dataset.json
