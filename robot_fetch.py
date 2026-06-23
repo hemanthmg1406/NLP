@@ -18,8 +18,8 @@ ROBOTS_URL = f"{BASE}/robots.txt"
 
 # arXiv currently declares Crawl-delay: 15 for ordinary crawlers. The fallback is
 # deliberately no lower, and one extra second provides a small scheduling margin.
-MIN_CRAWL_DELAY = 7.0
-CRAWL_DELAY_MARGIN = 1.0
+MIN_CRAWL_DELAY = 16.0
+CRAWL_DELAY_MARGIN = 0.0
 BACKOFF_429 = 60.0
 REQUEST_TIMEOUT = 30
 

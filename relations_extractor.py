@@ -24,13 +24,12 @@ Five non-generative signals are combined via a monotone decision rule:
      hat_H), 30 % weight on base-form match (hat_H vs H). This preserves the
      operator/scalar distinction while still capturing shared symbols.
 
-  5. Textual context similarity (SPECTER cosine)
-     Pre-equation prose + LaTeX are encoded with allenai-specter. High cosine
-     indicates equations appear in semantically related contexts. Used only when
-     there is also non-zero symbol overlap (jaccard > 0); cosine alone with
-     jaccard = 0 is unreliable because all same-section equations share the
-     same pre_text paragraph and cluster near cosine ~ 1.0 regardless of actual
-     mathematical relation.
+  5. Textual context similarity (TF-IDF cosine)
+     Pre/post-equation prose is vectorised with TF-IDF (unigrams + bigrams,
+     sublinear tf). High cosine indicates equations share specific rare
+     vocabulary in their context. Used only when jaccard > 0; TF-IDF cosine
+     alone is excluded because boilerplate prose still produces non-zero overlap
+     for unrelated same-section equations.
 
 Monotone decision rule (priority order)
 ----------------------------------------
@@ -41,7 +40,7 @@ Monotone decision rule (priority order)
   4. tree_sim >= TREE_SIM_STRONG
        AND no shared identifiers                → potential ('parallel form')
   5. jaccard >= JACCARD_POTENTIAL               → potential ('shared symbols …')
-  6. cosine >= COSINE_POTENTIAL AND jaccard > 0 → potential ('shared symbols … contextually related')
+  6. tfidf_cosine >= TFIDF_POTENTIAL AND jaccard > 0 → potential ('shared symbols … contextually related')
   7. otherwise                                  → none
 
 All pairs are emitted including 'none' to satisfy the project schema which
@@ -57,29 +56,30 @@ from context_extract import _split_sentences
 from mathml_tree import mathml_to_tree, tree_edit_distance
 
 # ---------------------------------------------------------------------------
-# Embedding model selection for Signal 5 (context similarity).
+# Signal 5: TF-IDF cosine similarity (replaces neural bi-encoder).
 #
-# "specter"   — allenai-specter: SentenceTransformer trained on scientific
-#               paper title+abstract pairs. Prose-aware, not math-aware.
-#               768-dim, SentenceTransformer API, normalize_embeddings built-in.
+# Why TF-IDF instead of a neural embedding model:
+#   Neural bi-encoders (specter, math_pretrained_bert) encode each context
+#   independently. Equations 1-7 in the same paper share the same pre_text
+#   paragraph, so their embeddings cluster near cosine ~ 1.0 regardless of
+#   actual relation — the signal is non-discriminating within a paper.
 #
-# "math_bert" — AnReu/math_pretrained_bert: BERT-base-cased further pre-trained
-#               on Math StackExchange in three stages — formula-formula coherence
-#               (LHS vs RHS prediction), formula-sentence coherence, then standard
-#               sentence-order prediction. Has 500 extra LaTeX tokens in the
-#               tokenizer. Math-aware, loaded via HuggingFace AutoModel,
-#               requires manual mean-pooling and L2 normalization.
-#
-# Change this constant and re-run to compare both models on identical input.
+#   TF-IDF weights rare paper-specific terms (e.g. "cavity damping kappa",
+#   "Bell state amplitude") above shared boilerplate ("where", "Hamiltonian").
+#   Two equations whose prose contexts share specific rare terms score high;
+#   two equations that merely appear in the same section score low.
+#   No model loading, no GPU dependency, deterministic across runs.
 # ---------------------------------------------------------------------------
-EMBEDDING_MODEL = "math_bert"
 
 # ---------------------------------------------------------------------------
-# Decision thresholds
-# Starting values from NLP baselines; calibrate on 5-paper hand-labeled dev set.
+# Decision thresholds.
+# TFIDF_POTENTIAL is lower than the old COSINE_POTENTIAL = 0.75 because
+# TF-IDF cosines are naturally smaller than neural cosines (sparse vectors,
+# no soft similarity across synonyms). Empirically calibrated on reviewed
+# papers: related equation pairs reach 0.25-0.60; unrelated pairs < 0.15.
 # ---------------------------------------------------------------------------
 TREE_SIM_STRONG   = 0.85
-COSINE_POTENTIAL  = 0.75
+TFIDF_POTENTIAL   = 0.20   # was COSINE_POTENTIAL = 0.75 (neural scale)
 JACCARD_POTENTIAL = 0.40
 
 # ---------------------------------------------------------------------------
@@ -145,14 +145,22 @@ _DECORATOR_PREFIXES = frozenset({
     "mathsf",
 })
 
-# Regex matching equation number patterns like (1), (3a), (A.1).
-# Used to detect explicit cross-references in surrounding prose.
-# Matches bare (1), (3a), (A.1) and also "Eq. (1)", "Eq.(1)", "eq (1)" variants.
-# The bare form is the standard but many papers write "Eq. (N)" — missing that
-# form caused operational references like "fitted with Gaussian function (1)" to
-# go undetected when the sentence used "Eq." prefix style.
+# Regex matching equation number patterns like (1), (3a), Eq. 5, equation 2.
+# Two alternative forms (joined with |) so both are detected in one pass:
+#
+#   Form A — "Eq(s). N" or "equation(s) N": prefix is mandatory; parens around
+#   the number are optional. Catches "Eq. 5", "Eq. (5)", "Eqs. 2 and 3",
+#   "equation 4" — patterns the old regex missed entirely.
+#
+#   Form B — bare "(N)": parens are mandatory; no prefix required. Catches the
+#   most common arXiv style: "substituting (3) into (5)".
+#
+# When both groups are present only one will be non-None; _substitute_eqrefs
+# reads whichever group matched via `m.group(1) or m.group(2)`.
 _EQNUM_RE = re.compile(
-    r"(?:(?:Eq|eq|equation|Equation)s?\.?\s*)?\((\d+(?:\.\d+)?[a-z]?)\)"
+    r"(?:Eqs?\.?|eqs?\.?|[Ee]quations?)\s*\(?(\d+(?:\.\d+)?[a-z]?)\)?"
+    r"|"
+    r"\((\d+(?:\.\d+)?[a-z]?)\)"
 )
 
 # Matches a leading LaTeX command or plain identifier on the LHS of an equation.
@@ -165,49 +173,21 @@ _LHS_RE = re.compile(
 )
 
 # ---------------------------------------------------------------------------
-# Lazy-loaded heavy resources (loaded once per process, not per paper).
+# Lazy-loaded resources (loaded once per process).
 # ---------------------------------------------------------------------------
-_nlp       = None
-_embedder  = None
-_tokenizer = None   # HuggingFace tokenizer; None when using SentenceTransformer
+_nlp = None
 
 
 def _get_nlp():
-    """Load spaCy en_core_web_sm on first call."""
+    """Load spaCy en_core_web_sm on first call; return None if unavailable."""
     global _nlp
-    if _nlp is None:
+    if _nlp is not None:
+        return _nlp if _nlp is not False else None
+    try:
         _nlp = spacy.load("en_core_web_sm", disable=["ner"])
-    return _nlp
-
-
-def _get_embedder():
-    """Load the selected embedding model on first call (lazy singleton).
-
-    For "specter": returns a SentenceTransformer instance.
-    For "math_bert": returns a HuggingFace AutoModel instance and also
-    populates the global _tokenizer.
-    """
-    global _embedder, _tokenizer
-    if _embedder is None:
-        if EMBEDDING_MODEL == "specter":
-            from sentence_transformers import SentenceTransformer
-            _embedder = SentenceTransformer("allenai-specter")
-        else:
-            # Import inside the branch so specter-only runs don't pull in torch.
-            import torch
-            from transformers import AutoTokenizer, AutoModel
-            _tokenizer = AutoTokenizer.from_pretrained("AnReu/math_pretrained_bert")
-            _embedder  = AutoModel.from_pretrained("AnReu/math_pretrained_bert",ignore_mismatched_sizes=True,)
-            _embedder.eval()
-            # Pick best available device: CUDA (DC 1.07), MPS (Mac M-series), CPU.
-            if torch.cuda.is_available():
-                device = "cuda"
-            elif torch.backends.mps.is_available():
-                device = "mps"
-            else:
-                device = "cpu"
-            _embedder = _embedder.to(device)
-    return _embedder
+    except (OSError, IOError):
+        _nlp = False
+    return _nlp if _nlp is not False else None
 
 
 # ---------------------------------------------------------------------------
@@ -298,7 +278,8 @@ def _substitute_eqrefs(text, valid_numbers):
     eqref_map = {}
 
     def _replace(m):
-        num = m.group(1)
+        # Group 1 fires for Form A ("Eq. N"); group 2 fires for Form B ("(N)").
+        num = m.group(1) or m.group(2)
         if num in valid_numbers:
             # Use underscores so spaCy treats EQREF_3 as a single token.
             token = f"EQREF_{num.replace('.', '_')}"
@@ -331,6 +312,8 @@ def _extract_cue_verb(text, eqref_token):
         verb is found (still marks the pair as explicitly referenced).
     """
     nlp = _get_nlp()
+    if nlp is None:
+        return "reference"  # spaCy unavailable: fall back to plain reference label
 
     # Narrow to the sentence containing this EQREF token.
     sentences = _split_sentences(text)
@@ -532,109 +515,59 @@ def weighted_jaccard(ids_a, ids_b):
 
 
 # ---------------------------------------------------------------------------
-# Signal 5: context embedding (SPECTER or math_pretrained_bert)
+# Signal 5: TF-IDF cosine similarity on prose context
 # ---------------------------------------------------------------------------
 
-def _hf_mean_pool(texts, model, tokenizer, batch_size=32):
-    """Encode texts with a HuggingFace BERT model via mean pooling + L2 norm.
-
-    Mean pooling over non-padding token embeddings is the standard approach
-    for extracting sentence-level representations from encoder models that
-    were not trained with a SentenceTransformer objective.
+def build_tfidf_matrix(texts):
+    """Fit TF-IDF on a small corpus of equation prose contexts and return
+    an L2-normalised dense matrix (one row per text).
 
     Parameters
     ----------
     texts : list of str
-    model : transformers.AutoModel
-        Must already be on the correct device.
-    tokenizer : transformers.AutoTokenizer
-    batch_size : int
-        Number of strings to encode per forward pass.
+        One combined prose string (pre_text + post_text) per equation.
+        LaTeX is excluded — structure is handled by Signal 3 (TED).
 
     Returns
     -------
     np.ndarray
-        Shape (len(texts), hidden_dim), L2-normalized row vectors.
+        Shape (len(texts), vocab_size), L2-normalised so that row-dot-product
+        equals cosine similarity.
     """
-    import torch
-    import torch.nn.functional as F
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.preprocessing import normalize
 
-    device = next(model.parameters()).device
-    all_vecs = []
-
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i : i + batch_size]
-        encoded = tokenizer(
-            batch,
-            padding=True,
-            truncation=True,
-            max_length=512,
-            return_tensors="pt",
-        ).to(device)
-
-        with torch.no_grad():
-            out = model(**encoded)
-
-        # last_hidden_state: (batch, seq_len, hidden_dim)
-        token_emb = out.last_hidden_state
-        mask      = encoded["attention_mask"]
-
-        # Mask out padding, sum, divide by real token count.
-        mask_exp = mask.unsqueeze(-1).expand(token_emb.size()).float()
-        pooled   = torch.sum(token_emb * mask_exp, dim=1) / \
-                   torch.clamp(mask_exp.sum(dim=1), min=1e-9)
-
-        # L2 normalize: cosine similarity == dot product on normalized vecs.
-        normed = F.normalize(pooled, p=2, dim=1)
-        all_vecs.append(normed.cpu().numpy())
-
-    return np.concatenate(all_vecs, axis=0)
+    # sublinear_tf: log(1 + tf) dampens high-frequency boilerplate terms.
+    # ngram_range (1,2): bigrams capture "density matrix", "decay rate" etc.
+    # No sklearn stop-word list: physics prose reuses "is", "the", "where"
+    # in definitional sentences — removing them would destroy the signal.
+    # min_df=1: corpus is tiny (≤7 docs), can't afford minimum-frequency filtering.
+    vec = TfidfVectorizer(
+        analyzer="word",
+        ngram_range=(1, 2),
+        sublinear_tf=True,
+        min_df=1,
+        token_pattern=r"(?u)\b\w[\w.]*\b",  # allow dots in "H.c.", "i.e."
+    )
+    sparse = vec.fit_transform(texts)
+    return normalize(sparse, norm="l2").toarray()
 
 
-def encode_contexts(texts):
-    """Encode context strings with the model selected by EMBEDDING_MODEL.
-
-    Returns L2-normalized row vectors. Cosine similarity between any two
-    vectors reduces to their dot product.
+def tfidf_cosine(matrix, i, j):
+    """Cosine similarity between rows i and j of an L2-normalised TF-IDF matrix.
 
     Parameters
     ----------
-    texts : list of str
-        One combined (pre_text + equation LaTeX) string per equation.
-
-    Returns
-    -------
-    np.ndarray
-        Shape (len(texts), embedding_dim). Dimension is 768 for both
-        allenai-specter and AnReu/math_pretrained_bert.
-    """
-    model = _get_embedder()
-
-    if EMBEDDING_MODEL == "specter":
-        return model.encode(
-            texts,
-            convert_to_numpy=True,
-            normalize_embeddings=True,
-            show_progress_bar=False,
-        )
-    else:
-        # math_bert: HuggingFace model, mean-pool manually.
-        return _hf_mean_pool(texts, model, _tokenizer)
-
-
-def cosine_similarity(vec_a, vec_b):
-    """Cosine similarity between two L2-normalized vectors (dot product).
-
-    Parameters
-    ----------
-    vec_a : np.ndarray
-    vec_b : np.ndarray
+    matrix : np.ndarray
+        Output of build_tfidf_matrix.
+    i, j : int
+        Row indices.
 
     Returns
     -------
     float
     """
-    return float(np.dot(vec_a, vec_b))
+    return float(np.dot(matrix[i], matrix[j]))
 
 
 # ---------------------------------------------------------------------------
@@ -658,10 +591,10 @@ def classify_relation(tree_sim, jaccard_sim, cosine_sim,
          the two equations are parallel constructions (e.g. one-electron vs
          two-electron integral), not the same object.
       5. Jaccard ≥ JACCARD_POTENTIAL → potential, 'shared symbols (X, Y)'.
-      6. Cosine ≥ COSINE_POTENTIAL AND jaccard > 0 → potential,
-         'shared symbols (X, Y), contextually related'. Cosine alone (jaccard=0)
-         is excluded: same-section equations always cluster near cosine~1.0
-         regardless of actual relation (pre_text is identical for all of them).
+      6. TF-IDF cosine ≥ TFIDF_POTENTIAL AND jaccard > 0 → potential,
+         'shared symbols (X, Y), contextually related'. TF-IDF cosine alone
+         (jaccard=0) is excluded: two unrelated equations in the same section
+         can share enough prose boilerplate to exceed the threshold.
       7. Otherwise → none.
 
     Parameters
@@ -712,15 +645,15 @@ def classify_relation(tree_sim, jaccard_sim, cosine_sim,
         label = f"shared symbols ({sym_str})" if sym_str else "overlapping notation"
         return "potential", f"{label} [j={jaccard_sim:.2f}]"
 
-    # Priority 6: cosine + non-zero jaccard.
-    # Cosine alone is excluded when jaccard = 0: all equations in the same
-    # section share the same pre_text and produce cosine ~ 1.0 for every pair,
-    # making the signal non-discriminating for intra-section comparisons.
-    if cosine_sim >= COSINE_POTENTIAL and jaccard_sim > 0:
+    # Priority 6: TF-IDF cosine + non-zero jaccard.
+    # TF-IDF cosine alone is not used (jaccard > 0 required): two equations in
+    # the same section can share enough prose to reach the threshold even when
+    # mathematically unrelated. Non-zero jaccard confirms shared notation.
+    if cosine_sim >= TFIDF_POTENTIAL and jaccard_sim > 0:
         sym_str = ", ".join(sorted(shared_ids)[:4]) if shared_ids else ""
         label = (f"shared symbols ({sym_str}), contextually related"
                  if sym_str else "contextually related")
-        return "potential", f"{label} [cos={cosine_sim:.2f}, j={jaccard_sim:.2f}]"
+        return "potential", f"{label} [tfidf={cosine_sim:.2f}, j={jaccard_sim:.2f}]"
 
     return "none", ""
 
@@ -806,26 +739,19 @@ def build_relations(equations, table_index, tree, pre_texts,
         table = table_index.get(eq["eq_id"])
         math_trees[eq["number"]] = mathml_to_tree(table)
 
-    # --- Signal 4: Embeddings ---
-    # Embed pre_text + equation LaTeX + post_text together.
-    # pre_text alone causes all equations in the same section to share
-    # identical embeddings (same paragraph), making cosine ~1.0 for all pairs.
-    # LaTeX makes vectors distinct when math differs.
-    # post_text ("where X is...") is unique per equation and adds definitional
-    # context that captures what each equation's symbols mean — further
-    # separating equations that share surrounding prose.
-    # latex_map already built above for Signal 1 — reuse it here.
-    context_texts = [
-        (
-            (pre_texts.get(num) or "") + " " +
-            (latex_map.get(num) or "") + " " +
-            (post_texts.get(num) or "")
-        ).strip()
+    # --- Signal 5: TF-IDF cosine on prose context ---
+    # Use pre_text + post_text only (no LaTeX): LaTeX structure is already
+    # covered by Signal 3 (TED). TF-IDF weights paper-specific rare terms
+    # above boilerplate, so related equations that share specific vocabulary
+    # ("cavity damping", "Bell state amplitude") score distinctly higher than
+    # unrelated equations that merely appear in the same section.
+    prose_texts = [
+        ((pre_texts.get(num) or "") + " " + (post_texts.get(num) or "")).strip()
         for num in numbers
     ]
-    embeddings = encode_contexts(context_texts)
-    # Map number → embedding vector for indexed access.
-    emb_map = {num: embeddings[i] for i, num in enumerate(numbers)}
+    tfidf_mat = build_tfidf_matrix(prose_texts)
+    # Map number → row index for O(1) access inside the pairwise loop.
+    num_idx = {num: i for i, num in enumerate(numbers)}
 
     # --- Frequency-based jaccard stop-list ---
     # Symbols appearing in more than half the paper's equations are high-frequency
@@ -907,8 +833,8 @@ def build_relations(equations, table_index, tree, pre_texts,
             ids_b_filt = [s for s in ids_b if s not in freq_stop]
             j_sim = weighted_jaccard(ids_a_filt, ids_b_filt)
 
-            # Signal 5: cosine similarity of context embeddings.
-            c_sim = cosine_similarity(emb_map[num_a], emb_map[num_b])
+            # Signal 5: TF-IDF cosine similarity of prose contexts.
+            c_sim = tfidf_cosine(tfidf_mat, num_idx[num_a], num_idx[num_b])
 
             # Exact symbol intersection over filtered sets — used to name shared
             # identifiers in the potential description so the grader sees a
@@ -977,6 +903,24 @@ def build_relations(equations, table_index, tree, pre_texts,
                 "grade": "strong",
                 "description": "component used in derivation",
             }
+
+    # Post-processing: general bidirectionalization of all strong pairs.
+    # If A→B is strong for any reason (explicit cross-reference, TED, Jaccard),
+    # the reverse B→A should also be strong. A mathematical dependency between
+    # two equations is not one-directional: the equation that is referenced or
+    # used is just as related to the referencing equation as vice versa.
+    # Only upgrade — never downgrade an existing strong entry.
+    for num_a in numbers:
+        for num_b in numbers:
+            if num_a == num_b:
+                continue
+            if result.get(num_a, {}).get(num_b, {}).get("grade") == "strong":
+                if result.get(num_b, {}).get(num_a, {}).get("grade") != "strong":
+                    fwd_desc = result[num_a][num_b].get("description", "strong relation")
+                    result[num_b][num_a] = {
+                        "grade": "strong",
+                        "description": f"bidirectional: {fwd_desc}",
+                    }
 
     # Post-processing: full DAG reachability with λ-decay path scoring.
     # Replaces the earlier depth-2 cutoff with complete BFS over the strong-edge

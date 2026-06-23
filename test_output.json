@@ -1,0 +1,2154 @@
+{
+  "2409.02921": {
+    "1": {
+      "equation": "\\hat{H}=\\hat{U}+\\hat{T}+\\hat{V}",
+      "meaning": "Specifies family of electronic hamiltonians.",
+      "symbols": {
+        "T": "a fixed kinetic energy term",
+        "U": "a fixed electron-electron interaction",
+        "V": "a free external potential term"
+      },
+      "relations": {
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "potential",
+          "description": "shared symbols (H, T, U, V) [j=0.80]"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Density Functional Theory",
+        "section_is_generic": false,
+        "section_used_as_fallback": false,
+        "intro_sentence": "To formalize this and set the notation, consider a family of electronic Hamiltonians",
+        "lead_in_phrase": "none",
+        "post_context_80": "where $\\hat{U}$ represents a fixed electron-electron interaction, $\\hat{T}$ is a",
+        "post_explanation": "The expectation value of the potential $\\langle\\hat{V}\\rangle$ is defined as a linear functional of the electronic densi",
+        "pre_context_120": "To formalize this and set the notation, consider a family of electronic Hamiltonians",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "hath",
+        "meaning_shape": "hamiltonian_decomposition",
+        "meaning_rule": "specifies",
+        "meaning_source": "intro",
+        "meaning_evidence": "To formalize this and set the notation, consider a family of electronic Hamiltonians",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "H",
+          "hat_H",
+          "hat_T",
+          "hat_U",
+          "hat_V",
+          "T",
+          "U",
+          "V"
+        ],
+        "symbol_defs_found": [
+          "T",
+          "U",
+          "V"
+        ],
+        "symbol_def_sources": {
+          "T": "post_where",
+          "U": "post_where",
+          "V": "post_where"
+        }
+      }
+    },
+    "2": {
+      "equation": "\\mathcal{F}:{\\bm{\\rho}}_{\\text{GS}}\\mapsto F:=\\bra{\\psi_{\\text{GS}}}(\\hat{U}+%\n\\hat{T})\\ket{\\psi_{\\text{GS}}},",
+      "meaning": "[GS] Defines the free energy.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "potential",
+          "description": "shared symbols (bm_rho, mathcal_F, rho), contextually related [tfidf=0.33, j=0.27]"
+        },
+        "4": {
+          "grade": "potential",
+          "description": "shared symbols (rho), contextually related [tfidf=0.33, j=0.13]"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "GS",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Density Functional Theory",
+        "section_is_generic": false,
+        "section_used_as_fallback": false,
+        "intro_sentence": "The first Hohenberg-Kohn theorem ensures the existence of the universal functional",
+        "lead_in_phrase": "none",
+        "post_context_80": "none",
+        "post_explanation": "which maps the electron density ${\\bm{\\rho}}_{\\text{GS}}$ of the ground state $\\ket{\\psi_{\\text{GS}}}$ of any $\\hat{H}$ ",
+        "pre_context_120": "The first Hohenberg-Kohn theorem ensures the existence of the universal functional",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "mathcalf:bmrhotextgs",
+        "meaning_shape": "definition",
+        "meaning_rule": "shape_definition",
+        "meaning_source": "post",
+        "meaning_evidence": "\\mathcal{F}:{\\bm{\\rho}}_{\\text{GS}}\\mapsto F:=\\bra{\\psi_{\\te",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "bm_rho",
+          "F",
+          "hat_T",
+          "hat_U",
+          "mathcal_F",
+          "rho",
+          "T",
+          "U"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "3": {
+      "equation": "E=\\mathcal{E}[{\\bm{\\rho}}_{\\text{GS}}]:=\\mathcal{F}[{\\bm{\\rho}}_{\\text{GS}}]+%\n\\bra{\\psi_{\\text{GS}}}\\hat{V}\\ket{\\psi_{\\text{GS}}},",
+      "meaning": "[GS] Gives GS.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "potential",
+          "description": "shared symbols (bm_rho, mathcal_F, rho), contextually related [tfidf=0.33, j=0.27]"
+        },
+        "4": {
+          "grade": "strong",
+          "description": "defines component"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "GS",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Density Functional Theory",
+        "section_is_generic": false,
+        "section_used_as_fallback": false,
+        "intro_sentence": "The functional is termed universal because it is independent of the external potential acting on the system.",
+        "lead_in_phrase": "The total ground state energy $E=\\bra{\\psi_{\\text{GS}}}\\hat{H}\\ket{\\psi_{\\text{GS}}}$ can be reconstructed from the grou",
+        "post_context_80": "where $\\bra{\\psi_{\\text{GS}}}\\hat{V}\\ket{\\psi_{\\text{GS}}}$ is a linear function",
+        "post_explanation": "The second Hohenberg-Kohn theorem states that, for a given $\\hat{V}$ , the ground state energy and density of the corres",
+        "pre_context_120": "The first Hohenberg-Kohn theorem ensures the existence of the universal functional which maps the electron density ${\\bm",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "e",
+        "meaning_shape": "definition",
+        "meaning_rule": "computed_from",
+        "meaning_source": "post",
+        "meaning_evidence": "The second Hohenberg-Kohn theorem states that, for a given $\\hat{V}$ , the ground state energy and density of the corres",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "bm_rho",
+          "E",
+          "hat_V",
+          "mathcal_E",
+          "mathcal_F",
+          "rho",
+          "V"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "4": {
+      "equation": "E=\\min_{\\bm{\\rho}}\\mathcal{E}[\\bm{\\rho}]\\,,\\quad\\bm{\\rho}_{\\text{GS}}=%\n\\operatorname*{arg\\,min}_{\\bm{\\rho}}\\mathcal{E}[\\bm{\\rho}].",
+      "meaning": "[GS] Gives GS.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "potential",
+          "description": "shared symbols (rho), contextually related [tfidf=0.33, j=0.13]"
+        },
+        "3": {
+          "grade": "strong",
+          "description": "defines component"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "GS",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Density Functional Theory",
+        "section_is_generic": false,
+        "section_used_as_fallback": false,
+        "intro_sentence": "The second Hohenberg-Kohn theorem states that, for a given $\\hat{V}$ , the ground state energy and density of the corres",
+        "lead_in_phrase": "none",
+        "post_context_80": "none",
+        "post_explanation": "While DFT approaches have been developed to investigate a wide variety of many-body systems, here we focus on a particul",
+        "pre_context_120": "The first Hohenberg-Kohn theorem ensures the existence of the universal functional which maps the electron density ${\\bm",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "e",
+        "meaning_shape": "assignment",
+        "meaning_rule": "computed_from",
+        "meaning_source": "intro",
+        "meaning_evidence": "The second Hohenberg-Kohn theorem states that, for a given $\\hat{V}$ , the ground state energy and density of the corres",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "E",
+          "mathcal_E",
+          "rho"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "5": {
+      "equation": "\\hat{H}_{{\\bm{\\mu}}}=\\hat{T}+\\hat{U}+\\hat{V}_{{\\bm{\\mu}}},",
+      "meaning": "Gives the Hamiltonian.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "potential",
+          "description": "shared symbols (H, T, U, V) [j=0.80]"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "shared symbols (T, hat_T), contextually related [tfidf=0.42, j=0.14]"
+        },
+        "7": {
+          "grade": "potential",
+          "description": "shared symbols (U, hat_U), contextually related [tfidf=0.42, j=0.14]"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "Hamiltonian",
+        "section_title": "The Fermi-Hubbard model",
+        "section_is_generic": false,
+        "section_used_as_fallback": false,
+        "intro_sentence": "We take this model on a one-dimensional ring of $L$ sites.",
+        "lead_in_phrase": "none",
+        "post_context_80": "none",
+        "post_explanation": "comprises a kinetic energy term $\\hat{T}$ , ab interaction term $\\hat{U}$ , and a potential term $\\hat{V}_{\\bm{\\mu}}$ .",
+        "pre_context_120": "In this work, we focus on the Fermi-Hubbard model, a paradigmatic lattice spin- $\\frac{1}{2}$ Fermion model with on-site",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "hathbmmu",
+        "meaning_shape": "hamiltonian_decomposition",
+        "meaning_rule": "shape_hamiltonian",
+        "meaning_source": "post",
+        "meaning_evidence": "\\hat{H}_{{\\bm{\\mu}}}=\\hat{T}+\\hat{U}+\\hat{V}_{{\\bm{\\mu}}},",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "bm_mu",
+          "H",
+          "hat_H",
+          "hat_T",
+          "hat_U",
+          "hat_V",
+          "mu",
+          "T",
+          "U",
+          "V"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "6": {
+      "equation": "\\hat{T}:=-t\\sum_{j}^{L}\\sum_{\\sigma\\in\\{\\uparrow,\\downarrow\\}}(\\hat{c}^{%\n\\dagger}_{j,\\sigma}\\hat{c}_{j+1,\\sigma}+\\hat{c}^{\\dagger}_{j+1,\\sigma}\\hat{c}_%\n{j,\\sigma}),",
+      "meaning": "Gives kinetic term describes the hopping.",
+      "symbols": {
+        "t": "the hopping parameter"
+      },
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "potential",
+          "description": "shared symbols (T, hat_T), contextually related [tfidf=0.42, j=0.14]"
+        },
+        "7": {
+          "grade": "potential",
+          "description": "shared symbols (L), contextually related [tfidf=1.00, j=0.11]"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "The Fermi-Hubbard model",
+        "section_is_generic": false,
+        "section_used_as_fallback": false,
+        "intro_sentence": "The number operator is defined as $\\hat{n}_{j,\\sigma}=\\hat{c}^{\\dagger}_{j,\\sigma}\\hat{c}_{j,\\sigma}$ .",
+        "lead_in_phrase": "The kinetic term describes the hopping of electrons between adjacent sites and is given by",
+        "post_context_80": "where $t$ is the hopping parameter. We choose without loss of generality $t=1$ ,",
+        "post_explanation": "We choose without loss of generality $t=1$ , thereby fixing the units of all energies.",
+        "pre_context_120": "In this work, we focus on the Fermi-Hubbard model, a paradigmatic lattice spin- $\\frac{1}{2}$ Fermion model with on-site",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "hatt",
+        "meaning_shape": "definition",
+        "meaning_rule": "gives",
+        "meaning_source": "lead_in",
+        "meaning_evidence": "The kinetic term describes the hopping of electrons between adjacent sites and is given by",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "c",
+          "hat_c",
+          "hat_T",
+          "L",
+          "T",
+          "t"
+        ],
+        "symbol_defs_found": [
+          "t"
+        ],
+        "symbol_def_sources": {
+          "t": "post_where"
+        }
+      }
+    },
+    "7": {
+      "equation": "\\hat{U}:=u\\sum_{j}^{L}\\hat{n}_{j,\\uparrow}\\hat{n}_{j,\\downarrow},",
+      "meaning": "Defines the Hamiltonian.",
+      "symbols": {
+        "u": "the interaction strength"
+      },
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "potential",
+          "description": "shared symbols (U, hat_U), contextually related [tfidf=0.42, j=0.14]"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "shared symbols (L), contextually related [tfidf=1.00, j=0.11]"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "The Fermi-Hubbard model",
+        "section_is_generic": false,
+        "section_used_as_fallback": false,
+        "intro_sentence": "We consider periodic boundary conditions, meaning ( $\\hat{c}_{L+1,\\sigma}:=\\hat{c}_{1,\\sigma}$ ).",
+        "lead_in_phrase": "The interaction term accounts for the on-site repulsion between electrons of opposite spins and is expressed as",
+        "post_context_80": "where $u$ is the interaction strength. The potential $\\hat{V}_{\\bm{\\mu}}$ define",
+        "post_explanation": "The potential $\\hat{V}_{\\bm{\\mu}}$ defines a specific instance of the Hubbard model within the broader family of models ",
+        "pre_context_120": "In this work, we focus on the Fermi-Hubbard model, a paradigmatic lattice spin- $\\frac{1}{2}$ Fermion model with on-site",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "hatu",
+        "meaning_shape": "definition",
+        "meaning_rule": "shape_definition",
+        "meaning_source": "post",
+        "meaning_evidence": "\\hat{U}:=u\\sum_{j}^{L}\\hat{n}_{j,\\uparrow}\\hat{n}_{j,\\downar",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "hat_n",
+          "hat_U",
+          "L",
+          "n",
+          "U",
+          "u"
+        ],
+        "symbol_defs_found": [
+          "u"
+        ],
+        "symbol_def_sources": {
+          "u": "post_where"
+        }
+      }
+    }
+  },
+  "2409.04026": {
+    "1": {
+      "equation": "\\frac{1}{1-\\gamma}\\left({\\sum_{i=1}^{n}y_{i}}-\\frac{\\gamma(\\kappa-1)n}{2}\\right)",
+      "meaning": "Presents the derivation.",
+      "symbols": {},
+      "relations": {
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Differential Privacy and the Shuffle Model",
+        "section_is_generic": false,
+        "section_used_as_fallback": false,
+        "intro_sentence": "The server sums all values $y_{i}$ and outputs the de-biased sum [5]",
+        "lead_in_phrase": "The server sums all values $y_{i}$ and outputs the de-biased sum [5] as",
+        "post_context_80": "none",
+        "post_explanation": "For completeness, we show the derivation of this quantity in Appendix A.",
+        "pre_context_120": "The Server. The server sums all values $y_{i}$ and outputs the de-biased sum [5] as:",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "frac11-gammaleftsumi",
+        "meaning_shape": "assignment",
+        "meaning_rule": "presents",
+        "meaning_source": "post",
+        "meaning_evidence": "For completeness, we show the derivation of this quantity in Appendix A.",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "gamma",
+          "kappa",
+          "n",
+          "y_i"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "2": {
+      "equation": "\\sum_{j=0}^{d-1}(\\omega^{j})^{x}=\\begin{cases}0,\\text{ if }x\\neq 0,\\\\\nd,\\text{ if }x=0\\end{cases}",
+      "meaning": "From the 'Background in Quantum Computation' section.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "shared symbols (d, omega) [j=0.50]"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "proposition",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Background in Quantum Computation",
+        "section_is_generic": false,
+        "section_used_as_fallback": true,
+        "intro_sentence": "Let $\\omega=e^{i2\\pi/d}$ , where $d\\geq 2$ is an integer.",
+        "lead_in_phrase": "none",
+        "post_context_80": "none",
+        "post_explanation": "none",
+        "pre_context_120": "Let $\\omega=e^{i2\\pi/d}$ , where $d\\geq 2$ is an integer. Let $x$ be an integer. Then (a) $\\omega^{x}=\\omega^{x\\pmod{d}}",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "sumj",
+        "meaning_shape": "assignment",
+        "meaning_rule": "section_fallback",
+        "meaning_source": "section_fallback",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "d",
+          "omega",
+          "x"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "3": {
+      "equation": "H\\ket{s}=\\frac{1}{\\sqrt{d}}\\sum_{j=0}^{d-1}\\omega^{js}\\ket{j}",
+      "meaning": "Defines the generalized hadamard gate.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Background in Quantum Computation",
+        "section_is_generic": false,
+        "section_used_as_fallback": false,
+        "intro_sentence": "The (generalized) $X$ and $Z$ operators are defined as: This gives the (linear) operators: From this, the identities $X^",
+        "lead_in_phrase": "The generalized Hadamard gate is defined as",
+        "post_context_80": "none",
+        "post_explanation": "none",
+        "pre_context_120": "Single Qudit Operations. The (generalized) $X$ and $Z$ operators are defined as: This gives the (linear) operators: From",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "hkets",
+        "meaning_shape": "assignment",
+        "meaning_rule": "define",
+        "meaning_source": "lead_in",
+        "meaning_evidence": "The generalized Hadamard gate is defined as",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "d",
+          "H",
+          "omega",
+          "s"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "4": {
+      "equation": "M=\\sum_{m=1}^{d}\\lambda_{m}\\ket{m}\\bra{m},",
+      "meaning": "From the 'Background in Quantum Computation' section.",
+      "symbols": {
+        "lambda_m": "the eigenvalues of $M$"
+      },
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "shared symbols (d), contextually related [tfidf=0.88, j=0.20]"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Background in Quantum Computation",
+        "section_is_generic": false,
+        "section_used_as_fallback": true,
+        "intro_sentence": "According to the spectral theorem [10, §2.1.5], any normal operator is diagonalizable, i.e., it can be written in terms ",
+        "lead_in_phrase": "Thus, we can write $M$ as",
+        "post_context_80": "where $\\lambda_{m}$ are the eigenvalues of $M$ , $\\ket{m}$ the corresponding eig",
+        "post_explanation": "The measurement outcomes are precisely the eigenvalues, which we can map to integer outcomes: $\\lambda_{i}\\mapsto i$ .",
+        "pre_context_120": "Measurements. To observe the current state of a quantum system, we need to measure the system. We will be using projecti",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "m",
+        "meaning_shape": "assignment",
+        "meaning_rule": "section_fallback",
+        "meaning_source": "section_fallback",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "d",
+          "lambda_m",
+          "M"
+        ],
+        "symbol_defs_found": [
+          "lambda_m"
+        ],
+        "symbol_def_sources": {
+          "lambda_m": "post_where"
+        }
+      }
+    },
+    "5": {
+      "equation": "p(m)=\\bra{\\psi}(\\ket{m}\\bra{m})\\ket{\\psi}=\\braket{\\psi}{m}\\braket{m}{\\psi}=%\n\\braket{\\psi}{m}\\braket{\\psi}{m}^{*}=|\\braket{\\psi}{m}|^{2},",
+      "meaning": "Gives the probability of the outcome $\\lambda_{m}$.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Background in Quantum Computation",
+        "section_is_generic": false,
+        "section_used_as_fallback": false,
+        "intro_sentence": "The measurement outcomes are precisely the eigenvalues, which we can map to integer outcomes: $\\lambda_{i}\\mapsto i$ .",
+        "lead_in_phrase": "The probability of obtaining the outcome $\\lambda_{m}$ when measuring the state $\\ket{\\psi}$ is given as",
+        "post_context_80": "none",
+        "post_explanation": "and the state of the system after the measurement changes to which is effectively $\\ket{m}$ up to a global phase factor,",
+        "pre_context_120": "Measurements. To observe the current state of a quantum system, we need to measure the system. We will be using projecti",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "pm",
+        "meaning_shape": "assignment",
+        "meaning_rule": "probability",
+        "meaning_source": "lead_in",
+        "meaning_evidence": "The probability of obtaining the outcome $\\lambda_{m}$ when measuring the state $\\ket{\\psi}$ is given as",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "m",
+          "p",
+          "psi"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "6": {
+      "equation": "Z=\\sum_{j=0}^{d-1}\\omega^{j}\\ket{j}\\bra{j}.",
+      "meaning": "Gives the since the spectral decomposition of $Z$.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "potential",
+          "description": "shared symbols (d, omega) [j=0.50]"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "potential",
+          "description": "shared symbols (d), contextually related [tfidf=0.88, j=0.20]"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Background in Quantum Computation",
+        "section_is_generic": false,
+        "section_used_as_fallback": false,
+        "intro_sentence": "We will be doing measurements in either the $Z$ or $X$ basis, i.e., either the observable $Z$ or $X$ .",
+        "lead_in_phrase": "Here, for instance, if measuring in the $Z$ (computational basis), the outcome is one of the $d$ eigenvalues $\\omega^{j}",
+        "post_context_80": "none",
+        "post_explanation": "A consequence of Proposition 5 is that the $Z$ and $X$ -basis are interchangeable via a Hadamard transform.",
+        "pre_context_120": "Measurements. To observe the current state of a quantum system, we need to measure the system. We will be using projecti",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "z",
+        "meaning_shape": "assignment",
+        "meaning_rule": "takes_form",
+        "meaning_source": "lead_in",
+        "meaning_evidence": "Here, for instance, if measuring in the $Z$ (computational basis), the outcome is one of the $d$ eigenvalues $\\omega^{j}",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "d",
+          "omega",
+          "Z"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "7": {
+      "equation": "(A\\otimes B)(\\ket{\\psi_{1}}\\otimes\\ket{\\psi_{2}})=A\\ket{\\psi_{1}}\\otimes B\\ket%\n{\\psi_{2}}",
+      "meaning": "Defines Background in Quantum Computation.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Background in Quantum Computation",
+        "section_is_generic": false,
+        "section_used_as_fallback": false,
+        "intro_sentence": "If the $i$ th qudit is denoted $\\ket{\\psi_{i}}$ then the state space of the $n$ -qudit system is denoted $\\ket{\\psi_{1}}",
+        "lead_in_phrase": "If $A$ is an operator on $\\ket{\\psi_{1}}$ and $B$ is an operator on $\\ket{\\psi_{2}}$ , then the combined operation on th",
+        "post_context_80": "none",
+        "post_explanation": "A couple of other useful properties of tensor products are as follows [10, §2.1.7]: for a complex number $z$ .",
+        "pre_context_120": "Multiple Qudits and Operations. We shall be working on a composite system, i.e., a system with more than one qudit. The ",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "aotimesbketpsi1otime",
+        "meaning_shape": "operator_action",
+        "meaning_rule": "define",
+        "meaning_source": "lead_in",
+        "meaning_evidence": "If $A$ is an operator on $\\ket{\\psi_{1}}$ and $B$ is an operator on $\\ket{\\psi_{2}}$ , then the combined operation on th",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "A",
+          "B",
+          "psi_1",
+          "psi_2"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    }
+  },
+  "2409.07516": {
+    "1": {
+      "equation": "\\ket{\\psi(t)}=e^{-iHt/\\hbar}\\ket{\\psi}",
+      "meaning": "Gives the time-evolved quantum state.",
+      "symbols": {},
+      "relations": {
+        "2": {
+          "grade": "potential",
+          "description": "shared symbols (H, e) [j=0.50]"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Quantum thermalization",
+        "section_is_generic": false,
+        "section_used_as_fallback": false,
+        "intro_sentence": "Once the system is initialized in a pure state $\\ket{\\psi}$ that is far from equilibrium, quantum thermalization dictate",
+        "lead_in_phrase": "none",
+        "post_context_80": "none",
+        "post_explanation": "becomes locally indistinguishable from a Gibbs state at a corresponding inverse temperature $\\beta=1/(k_{B}T)$ determine",
+        "pre_context_120": "We begin by formulating the precise statement of quantum thermalization. In this work, we consider a large but limited c",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "ketpsit",
+        "meaning_shape": "state_evolution",
+        "meaning_rule": "shape_state_evolution",
+        "meaning_source": "post",
+        "meaning_evidence": "\\ket{\\psi(t)}=e^{-iHt/\\hbar}\\ket{\\psi}",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "e",
+          "H",
+          "i",
+          "psi",
+          "t"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "2": {
+      "equation": "g_{\\beta}=\\frac{e^{-\\beta H}}{\\tr(e^{-\\beta H})},",
+      "meaning": "Gives the resulting state after the.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "potential",
+          "description": "shared symbols (H, e) [j=0.50]"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Quantum thermalization",
+        "section_is_generic": false,
+        "section_used_as_fallback": false,
+        "intro_sentence": "Once the system is initialized in a pure state $\\ket{\\psi}$ that is far from equilibrium, quantum thermalization dictate",
+        "lead_in_phrase": "none",
+        "post_context_80": "none",
+        "post_explanation": "at a corresponding inverse temperature $\\beta=1/(k_{B}T)$ determined by the conservation of global energy $\\expectationv",
+        "pre_context_120": "We begin by formulating the precise statement of quantum thermalization. In this work, we consider a large but limited c",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "gbeta",
+        "meaning_shape": "assignment",
+        "meaning_rule": "state_becomes",
+        "meaning_source": "intro",
+        "meaning_evidence": "Once the system is initialized in a pure state $\\ket{\\psi}$ that is far from equilibrium, quantum thermalization dictate",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "beta",
+          "e",
+          "H"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "3": {
+      "equation": "\\expectationvalue{O_{A}}{\\psi(t)}=\\tr(g_{\\beta}O_{A})\\pm\\varepsilon(N),",
+      "meaning": "Defines Quantum thermalization.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "strong",
+          "description": "reference"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Quantum thermalization",
+        "section_is_generic": false,
+        "section_used_as_fallback": false,
+        "intro_sentence": "Specifically, for any geometrically local and finite region $A$ and for any typical late time $t$ , we demand that the e",
+        "lead_in_phrase": "none",
+        "post_context_80": "where $\\varepsilon(N)$ accounts for finite-size corrections [34, 35], which must",
+        "post_explanation": "Equivalently, we write where we introduced the local trace norm $\\norm{\\,\\cdot\\,}_{A}$ , which measures the distinguisha",
+        "pre_context_120": "Local indistinguishability means equality of local measurement outcomes. Specifically, for any geometrically local and f",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "expectationvalueoaps",
+        "meaning_shape": "assignment",
+        "meaning_rule": "define",
+        "meaning_source": "post",
+        "meaning_evidence": "Equivalently, we write where we introduced the local trace norm $\\norm{\\,\\cdot\\,}_{A}$ , which measures the distinguisha",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "beta",
+          "N",
+          "O_A",
+          "psi",
+          "t",
+          "varepsilon"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "4": {
+      "equation": "\\norm{g_{\\beta}-\\psi(t)}_{A}\\leq\\varepsilon(N),",
+      "meaning": "From the 'Quantum thermalization' section.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "strong",
+          "description": "bidirectional: reference"
+        },
+        "5": {
+          "grade": "potential",
+          "description": "shared symbols (g, t, varepsilon) [j=0.75]"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Quantum thermalization",
+        "section_is_generic": false,
+        "section_used_as_fallback": true,
+        "intro_sentence": "Specifically, for any geometrically local and finite region $A$ and for any typical late time $t$ , we demand that the e",
+        "lead_in_phrase": "none",
+        "post_context_80": "where we introduced the local trace norm $\\norm{\\,\\cdot\\,}_{A}$ , which measures",
+        "post_explanation": "We say the state $\\psi$ thermalizes under $H$ if Eq. (4) holds.",
+        "pre_context_120": "Local indistinguishability means equality of local measurement outcomes. Specifically, for any geometrically local and f",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "normgbeta-psita",
+        "meaning_shape": "bound_or_inequality",
+        "meaning_rule": "section_fallback",
+        "meaning_source": "section_fallback",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "beta",
+          "g",
+          "N",
+          "psi",
+          "t",
+          "varepsilon"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "5": {
+      "equation": "\\mathop{{}\\mathbb{E}}_{\\psi}\\,\\mathop{{}\\mathbb{E}}_{t}\\left[\\norm{g_{\\beta}-\\psi(t)}_{A}\\right]\\leq\\varepsilon(N),",
+      "meaning": "From the 'Quantum thermalization' section.",
+      "symbols": {
+        "psi": "taken over initial states $\\psi$ sampled from the ensemble $\\mathcal{E}$"
+      },
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "potential",
+          "description": "shared symbols (g, t, varepsilon) [j=0.75]"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Quantum thermalization",
+        "section_is_generic": false,
+        "section_used_as_fallback": true,
+        "intro_sentence": "We say an ensemble $\\mathcal{E}$ consisting of pure states thermalizes if",
+        "lead_in_phrase": "none",
+        "post_context_80": "where the average $\\mathop{{}\\mathbb{E}}_{\\psi}$ is taken over initial states $\\",
+        "post_explanation": "The local trace norm being averaged is nonnegative, and therefore Eq. (5) implies quantum thermalization of all typical ",
+        "pre_context_120": "The second consideration is that it is provably impossible to devise a procedure (either formulated as a general theorem",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "mathopmathbbepsi,mat",
+        "meaning_shape": "bound_or_inequality",
+        "meaning_rule": "section_fallback",
+        "meaning_source": "section_fallback",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "beta",
+          "g",
+          "mathbb_E",
+          "N",
+          "psi",
+          "t",
+          "varepsilon"
+        ],
+        "symbol_defs_found": [
+          "psi"
+        ],
+        "symbol_def_sources": {
+          "psi": "post_where"
+        }
+      }
+    },
+    "6": {
+      "equation": "\\Big\\|\\mathop{{}\\mathbb{E}}_{\\psi}[\\psi]-g_{\\beta}\\Big\\|\\leq 2^{-N}\\varepsilon_{\\mathrm{GE}}(N),",
+      "meaning": "This definition gives the Energy dispersed Gibbs ensemble. From the 'EDGE Theorem' section.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "potential",
+          "description": "shared symbols (mathbb_E) [j=0.50]"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "definition",
+        "theorem_title": "Energy dispersed Gibbs ensemble",
+        "named_eq": "none",
+        "section_title": "EDGE Theorem",
+        "section_is_generic": false,
+        "section_used_as_fallback": true,
+        "intro_sentence": "[Gibbs ensemble] The average of the ensemble is close to $g_{\\beta}$",
+        "lead_in_phrase": "none",
+        "post_context_80": "where $\\norm{\\,\\cdot\\,}$ is the usual trace norm.",
+        "post_explanation": "none",
+        "pre_context_120": "[Gibbs ensemble] The average of the ensemble is close to $g_{\\beta}$ ,",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "big|mathopmathbbepsi",
+        "meaning_shape": "bound_or_inequality",
+        "meaning_rule": "section_fallback",
+        "meaning_source": "section_fallback",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "beta",
+          "mathbb_E",
+          "N",
+          "psi"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "7": {
+      "equation": "\\mathop{{}\\mathbb{E}}_{\\psi}\\Big[\\sum_{j=1}^{2^{N}}\\absolutevalue{\\innerproduct{E_{j}}{\\psi}}^{4}\\Big]\\leq\\varepsilon_{\\mathrm{ED}}(N).",
+      "meaning": "This definition gives the Energy dispersed Gibbs ensemble. From the 'EDGE Theorem' section.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "shared symbols (mathbb_E) [j=0.50]"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "definition",
+        "theorem_title": "Energy dispersed Gibbs ensemble",
+        "named_eq": "none",
+        "section_title": "EDGE Theorem",
+        "section_is_generic": false,
+        "section_used_as_fallback": true,
+        "intro_sentence": "[Energy dispersion] The average inverse participation ratio (IPR) in the energy eigenbasis $\\{\\ket{E_{j}}\\}_{j}$ is uppe",
+        "lead_in_phrase": "[Energy dispersion] The average inverse participation ratio (IPR) in the energy eigenbasis $\\{\\ket{E_{j}}\\}_{j}$ is uppe",
+        "post_context_80": "none",
+        "post_explanation": "none",
+        "pre_context_120": "[Energy dispersion] The average inverse participation ratio (IPR) in the energy eigenbasis $\\{\\ket{E_{j}}\\}_{j}$ is uppe",
+        "cross_ref": "none",
+        "abbreviation_sh": "inverse participation ratio",
+        "meaning_lhs": "mathopmathbbepsibig[",
+        "meaning_shape": "assignment",
+        "meaning_rule": "section_fallback",
+        "meaning_source": "section_fallback",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "E_j",
+          "mathbb_E",
+          "N",
+          "psi"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    }
+  },
+  "2409.15184": {
+    "1": {
+      "equation": "\\begin{split}\\begin{gathered}\\ket{0}\\ket{e}\\rightarrow-\\ket{0}\\ket{e};\\\\\n\\ket{1}\\ket{e}\\rightarrow-\\ket{1}\\ket{e};\\\\\n\\ket{0}\\ket{l}\\rightarrow-\\ket{0}\\ket{l};\\\\\n\\ket{1}\\ket{l}\\rightarrow\\ket{1}\\ket{l}.\\end{gathered}\\end{split}",
+      "meaning": "From the 'Photon-atom gate' section.",
+      "symbols": {},
+      "relations": {
+        "2": {
+          "grade": "potential",
+          "description": "parallel form [tree_sim=0.89]"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Photon-atom gate",
+        "section_is_generic": false,
+        "section_used_as_fallback": true,
+        "intro_sentence": "If the atom is state $\\ket{1}$ , it undergoes one Rabi oscillation, so a $\\pi$ phase shift between states $\\ket{0}$ and ",
+        "lead_in_phrase": "(Please note that a microwave 3 $\\pi$ -pulse should be applied to the atom based on Duan-Kimble scheme, instead this is ",
+        "post_context_80": "none",
+        "post_explanation": "This is a controlled phase gate between the photonic qubit and the atomic qubit.",
+        "pre_context_120": "Here I describe a controlled-phase gate between a photonic qubit in time-bin basis and a single atom in a high-finesse c",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "beginsplitbegingathe",
+        "meaning_shape": "unknown",
+        "meaning_rule": "section_fallback",
+        "meaning_source": "section_fallback",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "e",
+          "l"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "2": {
+      "equation": "\\begin{split}\\ket{0}\\ket{+}\\rightarrow-\\ket{0}\\ket{+};\\\\\n\\ket{1}\\ket{+}\\rightarrow-\\ket{1}\\ket{-};\\\\\n\\ket{0}\\ket{-}\\rightarrow-\\ket{0}\\ket{-};\\\\\n\\ket{1}\\ket{-}\\rightarrow-\\ket{1}\\ket{+}.\\end{split}",
+      "meaning": "From the 'Photon-atom gate' section.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "potential",
+          "description": "parallel form [tree_sim=0.89]"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Photon-atom gate",
+        "section_is_generic": false,
+        "section_used_as_fallback": true,
+        "intro_sentence": "This is a controlled phase gate between the photonic qubit and the atomic qubit.",
+        "lead_in_phrase": "If the photonic qubit is represented in basis $\\ket{\\pm}_{p}$ = 1/ $\\sqrt{2}$ ( $\\ket{e}$ $\\pm$ $\\ket{l}$ ), the control",
+        "post_context_80": "none",
+        "post_explanation": "Global phase can be ignored here.",
+        "pre_context_120": "This is a controlled phase gate between the photonic qubit and the atomic qubit. If the photonic qubit is represented in",
+        "cross_ref": "none",
+        "abbreviation_sh": "controlled-NOT",
+        "meaning_lhs": "beginsplitket0ket+ri",
+        "meaning_shape": "unknown",
+        "meaning_rule": "section_fallback",
+        "meaning_source": "section_fallback",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "3": {
+      "equation": "\\ket{A,B,p}=\\frac{1}{\\sqrt{2}}\\left[\\begin{array}[]{cc}\\frac{1}{\\sqrt{2}}\\left(\\ket{0}_{A}\\ket{0}_{B}+\\ket{1}_{A}\\ket{1}_{B}\\right)\\ket{+}_{p}\\\\\n+\\frac{1}{\\sqrt{2}}\\left(\\ket{0}_{A}\\ket{1}_{B}+\\ket{1}_{A}\\ket{0}_{B}\\right)\\ket{-}_{p}\\end{array}\\right].",
+      "meaning": "From the 'Entanglement generation' section.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "strong",
+          "description": "equivalent — shared form and symbols (A, B)"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Entanglement generation",
+        "section_is_generic": false,
+        "section_used_as_fallback": true,
+        "intro_sentence": "When the photon is reflected from the cavity at the Node A, the state of the photon and the atom becomes $-\\frac{1}{\\sqr",
+        "lead_in_phrase": "After reflection from the cavity at the Node B, assuming no photon loss, the state of the two single atoms and the photo",
+        "post_context_80": "none",
+        "post_explanation": "If the SPD measurement outcome is $\\ket{+}$ , the two distant single atoms are entangled with $\\ket{\\Phi^{+}_{AB}}$ ; wh",
+        "pre_context_120": "Here I describe how to generate an entangled state between two distant single atoms in cavities by sending a single phot",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "keta,b,p",
+        "meaning_shape": "assignment",
+        "meaning_rule": "section_fallback",
+        "meaning_source": "section_fallback",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "A",
+          "B",
+          "p"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "4": {
+      "equation": "\\ket{A,B,p_{2}}=\\frac{1}{\\sqrt{2}}\\left[\\begin{array}[]{cc}\\frac{1}{\\sqrt{2}}\\left(\\ket{0}_{A}\\ket{0}_{B}+\\ket{1}_{A}\\ket{1}_{B}\\right)\\ket{+}_{p_{2}}\\\\\n+\\frac{1}{\\sqrt{2}}\\left(\\ket{0}_{A}\\ket{1}_{B}+\\ket{1}_{A}\\ket{0}_{B}\\right)\\ket{-}_{p_{2}}\\end{array}\\right].",
+      "meaning": "From the 'Entanglement generation' section.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "strong",
+          "description": "equivalent — shared form and symbols (A, B)"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Entanglement generation",
+        "section_is_generic": false,
+        "section_used_as_fallback": true,
+        "intro_sentence": "If the photon gets reflected successfully from both of the cavities but the photon is not detected, the two atoms are ei",
+        "lead_in_phrase": "In this case, if another photon is sent and same operations are performed, assuming the second photon is not lost, the s",
+        "post_context_80": "none",
+        "post_explanation": "If the first photon is reflected successfully from the cavity A but not from the cavity B, the atom A is in a mixture st",
+        "pre_context_120": "If the SPD measurement outcome is $\\ket{+}$ , the two distant single atoms are entangled with $\\ket{\\Phi^{+}_{AB}}$ ; wh",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "keta,b,p2",
+        "meaning_shape": "assignment",
+        "meaning_rule": "section_fallback",
+        "meaning_source": "section_fallback",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "A",
+          "B",
+          "p_2"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "5": {
+      "equation": "\\begin{split}\\begin{gathered}\\frac{1}{\\sqrt{2}}\\left(\\ket{0}_{B}\\ket{0}_{C}+\\ket{1}_{B}\\ket{1}_{C}\\right)\\rightarrow\\\\\n\\frac{1}{\\sqrt{2}}\\left(\\ket{0}_{B}+\\ket{1}_{B}\\right)\\otimes\\frac{1}{\\sqrt{2}}\\left(\\ket{0}_{C}+\\ket{1}_{C}\\right)\\\\\n+\\frac{1}{\\sqrt{2}}\\left(\\ket{0}_{B}-\\ket{1}_{B}\\right)\\otimes\\frac{1}{\\sqrt{2}}\\left(\\ket{0}_{C}-\\ket{1}_{C}\\right)\\\\\n\\Leftrightarrow\\frac{1}{\\sqrt{2}}\\left(\\ket{0}_{B}\\ket{0}_{C}+\\ket{1}_{B}\\ket{1}_{C}\\right).\\end{gathered}\\end{split}",
+      "meaning": "From the 'Entanglement swapping' section.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Entanglement swapping",
+        "section_is_generic": false,
+        "section_used_as_fallback": true,
+        "intro_sentence": "Here I show an example, when the two single atoms are in state $\\Phi^{+}_{BC}$ , after $\\pi/2$ rotations",
+        "lead_in_phrase": "none",
+        "post_context_80": "none",
+        "post_explanation": "After calculating all possible cases, we can see that $\\Phi^{+}$ and $\\Psi^{-}$ stay unchanged; while $\\Phi^{-}$ changes",
+        "pre_context_120": "Two elementary links are entangled with $\\ket{\\Phi^{+}_{AB}}$ and $\\ket{\\Phi^{+}_{CD}}$ . Here I describe how to perform",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "beginsplitbegingathe",
+        "meaning_shape": "operator_action",
+        "meaning_rule": "section_fallback",
+        "meaning_source": "section_fallback",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "6": {
+      "equation": "\\begin{split}\\ket{\\Phi^{+}_{BC}}\\otimes\\left(\\alpha\\ket{0}_{D}+\\beta\\ket{1}_{D}\\right)\\\\\n\\ket{\\Phi^{-}_{BC}}\\otimes\\left(\\alpha\\ket{0}_{D}-\\beta\\ket{1}_{D}\\right)\\\\\n\\ket{\\Psi^{+}_{BC}}\\otimes\\left(\\alpha\\ket{1}_{D}+\\beta\\ket{0}_{D}\\right)\\\\\n\\ket{\\Psi^{-}_{BC}}\\otimes\\left(\\alpha\\ket{1}_{D}-\\beta\\ket{0}_{D}\\right)\\end{split}",
+      "meaning": "From the 'Entanglement swapping' section.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Entanglement swapping",
+        "section_is_generic": false,
+        "section_used_as_fallback": true,
+        "intro_sentence": "Since the Node A and B are initially entangled, after quantum teleportation, the Node A and D are entangled.",
+        "lead_in_phrase": "none",
+        "post_context_80": "none",
+        "post_explanation": "At the end, the atoms at the Node A and D are entangled with $\\ket{\\Phi^{+}_{AD}}$ .",
+        "pre_context_120": "By default, state of the atom at the Node B is teleported to the atom at the Node D, and the atomic state at the Node B ",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "beginsplitketphi+bco",
+        "meaning_shape": "operator_action",
+        "meaning_rule": "section_fallback",
+        "meaning_source": "section_fallback",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "alpha",
+          "beta",
+          "Phi",
+          "Psi"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "7": {
+      "equation": "\\begin{split}\\begin{gathered}N_{avg}=\\Biggl{\\{}n_{m}\\times\\left(p_{0}^{n_{m}}\\right)^{2^{n-1}}+\\\\\n\\sum_{i=1}^{n_{m}-1}i\\times\\left[\\begin{array}[]{cc}\\sum_{k=1}^{2^{n-1}}{{2^{n-1}}\\choose{k}}\\\\\n\\times\\left[{{n_{m}}\\choose{i}}p_{0}^{i}\\left(1-p_{0}\\right)^{n_{m}-i}\\right]^{k}\\\\\n\\times\\left[\\sum_{j=i+1}^{n_{m}}{{n_{m}}\\choose{j}}p_{0}^{j}\\left(1-p_{0}\\right)^{n_{m}-j}\\right]^{2^{n-1}-k}\\end{array}\\right]\\Biggr{\\}}\\\\\n\\times\\left(1-\\left(1-\\eta_{d}\\eta_{s}\\eta_{c}^{2}p_{CN}^{2}\\right)^{n_{s}}\\right)^{2(2^{n-1}-1)},\\end{gathered}\\end{split}",
+      "meaning": "From the 'Multiplexing' section.",
+      "symbols": {
+        "n_m": "number"
+      },
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Multiplexing",
+        "section_is_generic": false,
+        "section_used_as_fallback": true,
+        "intro_sentence": "The entanglement generation processes at the elementary links have a success probability $p_{0}$ and the multiplexing nu",
+        "lead_in_phrase": "The average number of entangled states generated by one cycle can be estimated as",
+        "post_context_80": "where $\\left(p_{0}^{n_{m}}\\right)^{2^{n-1}}$ is the probability of $n_{m}$ numbe",
+        "post_explanation": "to ensure $i$ number of entangled pairs between two end nodes, one and only one elementary link has $i$ number of entang",
+        "pre_context_120": "Multiplexing technique can be used to greatly enhance entanglement distribution rates [48, 10]. At each repeater node, m",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "beginsplitbegingathe",
+        "meaning_shape": "assignment",
+        "meaning_rule": "section_fallback",
+        "meaning_source": "section_fallback",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "eta_c",
+          "eta_d",
+          "eta_s",
+          "n",
+          "N_avg",
+          "n_m",
+          "n_s",
+          "p_0",
+          "p_CN"
+        ],
+        "symbol_defs_found": [
+          "n_m"
+        ],
+        "symbol_def_sources": {
+          "n_m": "post_where"
+        }
+      }
+    }
+  },
+  "2409.15203": {
+    "1": {
+      "equation": "8\\ell\\sqrt{n}\\cdot\\sum_{i=0}^{\\lfloor{\\log_{9/10}(|V|/n)}\\rfloor%\n-1}\\sqrt{\\frac{9}{10}}^{i}",
+      "meaning": "Intermediate step in proof of Theorem 1.6.",
+      "symbols": {},
+      "relations": {
+        "2": {
+          "grade": "strong",
+          "description": "bidirectional: reference"
+        },
+        "3": {
+          "grade": "strong",
+          "description": "bidirectional: reference"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "strong",
+          "description": "bidirectional: reference"
+        },
+        "7": {
+          "grade": "potential",
+          "description": "indirect dependency via (6) [path_score=0.25]"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "claim",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Proof of Theorem 1.6",
+        "section_is_generic": true,
+        "section_used_as_fallback": false,
+        "intro_sentence": "Suppose that $f_{\\geq\\ell}(V)\\leq d/10$ and the number qubits in $\\overline{V}$ that participate in good (length $\\leq\\e",
+        "lead_in_phrase": "none",
+        "post_context_80": "none",
+        "post_explanation": "(for intuition, note that (1) is at most $8\\ell\\sqrt{n}\\cdot\\frac{1-\\sqrt{|V|/n}}{1-\\sqrt{9/10}}\\leq 160\\ell\\sqrt{n}$ .)",
+        "pre_context_120": "Let $V\\subset Q$ be the subset of qubits lying in some rectangle $R$ . Suppose that $f_{\\geq\\ell}(V)\\leq d/10$ and the n",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "8ellsqrtncdotsumi",
+        "meaning_shape": "assignment",
+        "meaning_rule": "proof_step_fallback",
+        "meaning_source": "proof_section",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "n",
+          "V"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "2": {
+      "equation": "\\leq|S|+8\\ell\\sqrt{n}\\cdot\\sum_{i=0}^{\\lfloor{\\log_{9/10}(|V|/n)}%\n\\rfloor-1}\\sqrt{\\frac{9}{10}}^{i} \\leq 8\\ell\\sqrt{|V|}+8\\ell\\sqrt{n}\\cdot\\sum_{i=0}^{\\lfloor{\\log_{%\n9/10}(|V|/n)}\\rfloor-1}\\sqrt{\\frac{9}{10}}^{i} <8\\ell\\sqrt{n}\\cdot\\sum_{i=0}^{\\lfloor{\\log_{9/10}(|V_{1}|/n)}%\n\\rfloor-1}\\sqrt{\\frac{9}{10}}^{i}",
+      "meaning": "Intermediate step in proof of Theorem 1.6.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "strong",
+          "description": "reference"
+        },
+        "3": {
+          "grade": "potential",
+          "description": "shared symbols (S, V, V_1, n), contextually related [tfidf=0.44, j=0.40]"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "strong",
+          "description": "bidirectional: reference"
+        },
+        "7": {
+          "grade": "potential",
+          "description": "indirect dependency via (6) [path_score=0.25]"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Proof of Theorem 1.6",
+        "section_is_generic": true,
+        "section_used_as_fallback": false,
+        "intro_sentence": "By (1), the number of such qubits is thus at most",
+        "lead_in_phrase": "none",
+        "post_context_80": "none",
+        "post_explanation": "In the last inequality, we used that $|V_{1}|\\leq\\frac{9}{10}|V|$ .",
+        "pre_context_120": "All qubits in $\\overline{V_{1}}$ participating in good (length $\\leq\\ell$ ) interactions with $V_{1}$ and must be either",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "none",
+        "meaning_shape": "bound_or_inequality",
+        "meaning_rule": "proof_step_fallback",
+        "meaning_source": "proof_section",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "n",
+          "S",
+          "V",
+          "V_1"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "3": {
+      "equation": "\\left|T\\right| \\leq|V_{1}\\setminus U_{1}|+|V_{2}\\setminus U_{2}|+|S|+|B| \\leq\\frac{d}{10}+8\\ell\\sqrt{|V|}+8\\ell\\sqrt{n}\\cdot\\sum_{i=0}^{%\n\\lfloor{\\log_{9/10}(|V|/n)}\\rfloor-1}\\sqrt{\\frac{9}{10}}^{i} \\leq\\frac{d}{10}+8\\ell\\sqrt{n}\\cdot\\sum_{i=0}^{\\infty}\\sqrt{\\frac%\n{9}{10}}^{i} =\\frac{d}{10}+8\\ell\\sqrt{n}\\cdot\\frac{1}{1-\\sqrt{9/10}} <d",
+      "meaning": "Bounds Lagrangian under the stated conditions.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "strong",
+          "description": "reference"
+        },
+        "2": {
+          "grade": "potential",
+          "description": "shared symbols (S, V, V_1, n), contextually related [tfidf=0.44, j=0.40]"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "potential",
+          "description": "indirect dependency via (1) [path_score=0.25]"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Proof of Theorem 1.6",
+        "section_is_generic": true,
+        "section_used_as_fallback": false,
+        "intro_sentence": "Since $U_{1}$ and $U_{2}$ only contain good qubits, the set $T\\stackrel{{\\scriptstyle\\rm def}}{{=}}B\\cup(V\\setminus(U_{1",
+        "lead_in_phrase": "none",
+        "post_context_80": "where the last inequality uses our choice of $\\ell=\\frac{d}{200\\sqrt{n}}$ . Thus",
+        "post_explanation": "Thus, $T$ is correctable by the Distance Property (Lemma 3.5), so $T\\cup(U_{1}\\cup U_{2})$ is correctable by the Expansi",
+        "pre_context_120": "Now suppose $V$ is a set of qubits satisfies $f_{\\geq\\ell}(V)\\leq d/10$ and (1), and assume for induction the Claim is t",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "left|tright|",
+        "meaning_shape": "bound_or_inequality",
+        "meaning_rule": "shape_bound",
+        "meaning_source": "post",
+        "meaning_evidence": "\\left|T\\right| \\leq|V_{1}\\setminus U_{1}|+|V_{2}\\setminus U_",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "B",
+          "d",
+          "n",
+          "S",
+          "T",
+          "U_1",
+          "U_2",
+          "V",
+          "V_1",
+          "V_2"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "4": {
+      "equation": "1+m\\leq 1+\\frac{2f(R[10\\ell,h])}{d_{1}}\\leq 1+\\frac{2(f(R)-d_{1}%\n)}{d_{1}}<\\frac{2f(R)}{d_{1}}.",
+      "meaning": "Gives the number of rectangles.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "strong",
+          "description": "equivalent — shared form and symbols (R, d_1, f, h)"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Proof of Theorem 1.7: Two Lemmas",
+        "section_is_generic": true,
+        "section_used_as_fallback": false,
+        "intro_sentence": "Rectangles $R_{1},\\dots,R_{m}$ satisfy properties 1 and 2 by induction, and rectangle $R_{0}$ satisfies properties 1 and",
+        "lead_in_phrase": "The number of rectangles is",
+        "post_context_80": "none",
+        "post_explanation": "Thus, this is a valid division.",
+        "pre_context_120": "Case 1: $h_{1}\\leq 10\\ell$ . In this case, $f(R[10\\ell,h])\\leq f(R[h_{1},h])=f(R)-f(R_{0})\\leq f(R)-d_{1}$ . Apply the i",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "1+m",
+        "meaning_shape": "bound_or_inequality",
+        "meaning_rule": "takes_form",
+        "meaning_source": "lead_in",
+        "meaning_evidence": "The number of rectangles is",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "d_1",
+          "f",
+          "h",
+          "m",
+          "R"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "5": {
+      "equation": "2+m\\leq 2+\\frac{2f(R[h_{1},h])}{d_{1}}\\leq 2+\\frac{2(f(R)-d_{1})%\n}{d_{1}}=\\frac{2f(R)}{d_{1}}.",
+      "meaning": "Gives the number of rectangles.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "none"
+        },
+        "2": {
+          "grade": "none"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "strong",
+          "description": "equivalent — shared form and symbols (R, d_1, f, h)"
+        },
+        "6": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "none"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Proof of Theorem 1.7: Two Lemmas",
+        "section_is_generic": true,
+        "section_used_as_fallback": false,
+        "intro_sentence": "Rectangles $R_{0,0}$ and $R_{0,1}$ satisfy properties 1 and 2 by definition: for property 1, both have height at least $",
+        "lead_in_phrase": "The number of rectangles is",
+        "post_context_80": "none",
+        "post_explanation": "Thus, this is a valid division.",
+        "pre_context_120": "Case 2: $h_{1}>10\\ell$ . In this case, $f(R[h_{1},h])=f(R)-f(R[0,h_{1}])\\leq f(R)-d_{1}$ . Apply the induction hypothesi",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "2+m",
+        "meaning_shape": "bound_or_inequality",
+        "meaning_rule": "takes_form",
+        "meaning_source": "lead_in",
+        "meaning_evidence": "The number of rectangles is",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "d_1",
+          "f",
+          "h",
+          "h_1",
+          "m",
+          "R"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "6": {
+      "equation": "\\sum_{i,j:\\text{$S_{i,j}$ bad}}2\\cdot\\frac{f_{\\geq\\ell}(S_{i,j})}%\n{d/10}\\leq\\sum_{i,j}2\\cdot\\frac{f_{\\geq\\ell}(S_{i,j})}{d/10}<\\frac{\\max(k,d)}{%\nd}.",
+      "meaning": "[Si,j] Bounds action under the stated conditions.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "strong",
+          "description": "reference"
+        },
+        "2": {
+          "grade": "strong",
+          "description": "reference"
+        },
+        "3": {
+          "grade": "potential",
+          "description": "indirect dependency via (2) [path_score=0.25]"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "7": {
+          "grade": "strong",
+          "description": "bidirectional: reference"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "Si,j",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Proof of Theorem 1.7",
+        "section_is_generic": true,
+        "section_used_as_fallback": false,
+        "intro_sentence": "The total number of bad rectangles is at most",
+        "lead_in_phrase": "none",
+        "post_context_80": "where we used that $\\sum_{i,j}f_{\\geq\\ell}(S_{i,j})\\leq\\max(k,d)/50$ . Define th",
+        "post_explanation": "Define the partition $\\mathcal{A},\\mathcal{B},\\mathcal{C}$ of the plane as follows (see Figure 10): • $\\mathcal{C}$ is t",
+        "pre_context_120": "We now construct a division of the plane $\\mathcal{A}\\sqcup\\mathcal{B}\\sqcup\\mathcal{C}$ that informs our partition of t",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "sumi,j:text$si,j$bad",
+        "meaning_shape": "bound_or_inequality",
+        "meaning_rule": "shape_bound",
+        "meaning_source": "post",
+        "meaning_evidence": "\\sum_{i,j:\\text{$S_{i,j}$ bad}}2\\cdot\\frac{f_{\\geq\\ell}(S_{i",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "d",
+          "k"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    },
+    "7": {
+      "equation": "|C|\\leq\\frac{k}{50}+\\frac{400\\ell^{2}k}{d}+\\frac{16\\ell^{2}n}{w^{%\n2}} \\leq\\frac{k}{50}+\\frac{k}{25}+\\frac{k}{100}<k.",
+      "meaning": "Intermediate step in proof of Theorem 1.7.",
+      "symbols": {},
+      "relations": {
+        "1": {
+          "grade": "potential",
+          "description": "indirect dependency via (6) [path_score=0.25]"
+        },
+        "2": {
+          "grade": "potential",
+          "description": "indirect dependency via (6) [path_score=0.25]"
+        },
+        "3": {
+          "grade": "none"
+        },
+        "4": {
+          "grade": "none"
+        },
+        "5": {
+          "grade": "none"
+        },
+        "6": {
+          "grade": "strong",
+          "description": "reference"
+        }
+      },
+      "audit-trail": {
+        "source": "html",
+        "model": "encoder/classifier only — no generative model",
+        "inline_label": "none",
+        "theorem_env": "none",
+        "theorem_title": "none",
+        "named_eq": "none",
+        "section_title": "Proof of Theorem 1.7",
+        "section_is_generic": true,
+        "section_used_as_fallback": false,
+        "intro_sentence": "Thus, the number of points within $\\ell_{\\infty}$ distance $2\\ell$ of some bad rectangle’s vertex is less than $\\frac{40",
+        "lead_in_phrase": "none",
+        "post_context_80": "none",
+        "post_explanation": "In second inequality, the middle term plugs in $\\ell$ and uses $k\\leq n$ , and the last term plugs in $w$ and $\\ell$ in ",
+        "pre_context_120": "$|C|<k$ . The number of bad qubits is at most $k/50$ by assumption. The number of qubits within $\\ell_{\\infty}$ -distanc",
+        "cross_ref": "none",
+        "abbreviation_sh": "none",
+        "meaning_lhs": "|c|",
+        "meaning_shape": "bound_or_inequality",
+        "meaning_rule": "proof_step_fallback",
+        "meaning_source": "proof_section",
+        "meaning_evidence": "none",
+        "meaning_method": "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
+        "respectively_syms": "none",
+        "identifiers": [
+          "C",
+          "d",
+          "k",
+          "n",
+          "w"
+        ],
+        "symbol_defs_found": [],
+        "symbol_def_sources": {}
+      }
+    }
+  }
+}

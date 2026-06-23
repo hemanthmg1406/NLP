@@ -1,10 +1,19 @@
-"""Extract equation symbols and simple text definitions from cached arXiv HTML.
+"""Extract equation symbols and text definitions from cached arXiv HTML.
 
-This is Pipeline A for Stage 4. It is deterministic and rule-based:
-1. enumerate identifiers from MathML, with a small LaTeX fallback,
-2. search the cleaned equation context for definition patterns.
+Identifier extraction: MathML leaves + LaTeX AST fallbacks.
+Definition extraction: strict post-equation 'where' clause parsing only.
 
-No network calls. No generated text. No equation LaTeX is modified.
+Design principle — precision over recall:
+    Output nothing when the definition is uncertain.
+    A missing definition is better than a wrong one.
+
+No paper-wide symbol scanning. No POS tagger. No physics prior.
+No network calls. No generated text.
+
+Provenance tags written to _sources (when caller passes the dict):
+    'post_where'    — 'where' clause in post_text
+    'respectively'  — 'respectively' coordinated list
+    'pre_explicit'  — explicit let/denote/define in last 2 pre_text sentences
 """
 
 import re
@@ -15,39 +24,12 @@ from pylatexenc.latexwalker import (LatexWalker, LatexMacroNode,
                                      LatexCharsNode, LatexGroupNode,
                                      LatexEnvironmentNode)
 
-from context_extract import get_contexts, _clean_para, _split_sentences
+from context_extract import get_contexts, _split_sentences
 from review_equations import extract_equations
 
-# Penn Treebank POS tags that constitute a simple noun phrase.
-# Adapted from ScholarPhi (Allen AI) search_symbol_nickname.
-_NP_TAGS = frozenset({"DT", "JJ", "NN", "NNS", "NNP", "NNPS", "VBG", "VBN"})
-
-# Lazy-loaded spaCy model.  Populated on first call to _get_nlp().
-# False = unavailable sentinel so we do not retry after a failed load.
-_NLP = None
-
-
-def _get_nlp():
-    """Return a loaded spaCy en_core_web_sm model, or None if unavailable.
-
-    Loading is deferred to the first call so the module imports cleanly on
-    machines where spaCy is not installed.  On subsequent calls the cached
-    instance is returned without re-loading.
-
-    Returns
-    -------
-    spacy.Language or None
-    """
-    global _NLP
-    if _NLP is not None:
-        return _NLP if _NLP is not False else None
-    try:
-        import spacy  # noqa: PLC0415 — deferred intentionally
-        _NLP = spacy.load("en_core_web_sm")
-    except (ImportError, OSError):
-        _NLP = False
-    return _NLP if _NLP is not False else None
-
+# ---------------------------------------------------------------------------
+# Symbol constants — shared by identifier extraction and definition matching
+# ---------------------------------------------------------------------------
 
 CACHE_DIR = Path("cache")
 
@@ -73,60 +55,51 @@ COMMAND_STOP = {
     "mp", "dagger", "prime", "rangle", "langle", "ket", "bra", "braket",
     "innerproduct", "outerproduct", "expectationvalue", "norm", "abs",
     "absolutevalue", "coloneqq", "eqqcolon", "underbrace", "overbrace",
-    # delimiter commands — these are fence/norm symbols, never physics identifiers
     "lVert", "rVert", "lvert", "rvert", "Vert", "vert",
     "lfloor", "rfloor", "lceil", "rceil", "lbrace", "rbrace",
-    # partial derivative is an operator, not a physics variable
-    "partial",
+    "partial", "limits",
+    "bigotimes", "bigoplus", "bigcup", "bigcap", "bigvee", "bigwedge", "biguplus",
+    "coprod",
 }
 
 IDENTIFIER_STOP = {
-    "d", "e", "i", "j", "k", "n", "m", "l", "x", "y", "z", "t",
-    "o",  # Landau little-o notation; never a standalone physics symbol
+    "o",
     "sin", "cos", "tan", "log", "ln", "exp", "tr", "Tr", "trace", "Pr",
     "Re", "Im", "det", "rank", "dim", "mod", "sup", "inf", "limsup",
-    "liminf", "argmin", "argmax", "Perm", "Haf", "min", "max", "pi"
+    "liminf", "argmin", "argmax", "Perm", "Haf", "min", "max", "pi",
 }
 
-# LaTeX operators whose subscript is a bound (index) variable, not a physics symbol.
-# Detected structurally via AST walk — no hardcoded variable names needed.
+# Operators whose subscript is a bound (summation/integration) variable.
 _BOUND_OPS = {
     "sum", "prod", "int", "oint", "iint", "iiint", "iiiint", "idotsint",
-    "lim", "limsup", "liminf",
-    "sup", "inf", "max", "min", "argmin", "argmax",
-    "bigcup", "bigcap", "bigvee", "bigwedge",
-    "forall", "exists",
+    "lim", "limsup", "liminf", "sup", "inf", "max", "min", "argmin", "argmax",
+    "bigcup", "bigcap", "bigvee", "bigwedge", "forall", "exists",
 }
 
+# ---------------------------------------------------------------------------
+# Bound variable detection (pylatexenc AST walk)
+# ---------------------------------------------------------------------------
 
 def _all_identifiers_in_group(group_node):
-    """Return all alphabetic bound-variable identifiers from a subscript group.
+    """Return alphabetic bound-variable identifiers from a subscript brace group.
 
     Handles multi-index subscripts like ``{a,b,c}`` or ``{i=0}^{N}``.
-    Each comma-separated token is inspected for a leading alpha identifier.
-    Macro nodes (e.g. ``\\rho``) are included directly.
 
     Parameters
     ----------
     group_node : LatexGroupNode
-        The brace group immediately after an underscore in a bound operator
-        context, e.g. ``{j=0}`` or ``{a,b}``.
 
     Returns
     -------
     set of str
-        All leading identifiers found, e.g. ``{'a', 'b'}`` for ``{a,b}``.
     """
     found = set()
-    # collect raw char text and macro names in one pass
     raw_chars = []
     for node in group_node.nodelist:
         if isinstance(node, LatexCharsNode):
             raw_chars.append(node.chars)
         elif isinstance(node, LatexMacroNode):
-            # bare macro in subscript is a bound variable, e.g. \rho
             found.add(node.macroname)
-    # split on comma or semicolon to handle {a,b} and {i;j}
     raw = "".join(raw_chars)
     for part in re.split(r"[,;]", raw):
         m = re.match(r"\s*([A-Za-z]+)", part)
@@ -136,14 +109,13 @@ def _all_identifiers_in_group(group_node):
 
 
 def _collect_bound(nodelist, bound):
-    """Recursively walk a pylatexenc node list and collect bound variable names.
+    """Recursively collect bound variable names from a pylatexenc node list.
 
     Parameters
     ----------
     nodelist : list
-        List of pylatexenc AST nodes.
     bound : set
-        Accumulator — bound variable names are added here in place.
+        Accumulator; names are added in place.
     """
     if not nodelist:
         return
@@ -152,14 +124,11 @@ def _collect_bound(nodelist, bound):
         node = nodelist[i]
         if isinstance(node, LatexMacroNode):
             if node.macroname in _BOUND_OPS:
-                # scan forward for the pattern  _  {subscript}
                 j = i + 1
                 while j < len(nodelist):
                     nxt = nodelist[j]
                     if isinstance(nxt, LatexCharsNode) and "_" in nxt.chars:
                         if j + 1 < len(nodelist) and isinstance(nodelist[j + 1], LatexGroupNode):
-                            # _all_identifiers_in_group handles multi-index
-                            # subscripts like {a,b} — captures every variable
                             bound.update(_all_identifiers_in_group(nodelist[j + 1]))
                         break
                     elif isinstance(nxt, LatexGroupNode):
@@ -177,23 +146,17 @@ def _collect_bound(nodelist, bound):
 def get_bound_variables(latex):
     """Return variable names bound by sum/int/prod/lim/max etc. in a LaTeX equation.
 
+    Uses pylatexenc AST walking — a variable is only excluded if it appears as
+    a summation/integration index IN THIS EQUATION, not globally.
+
     Parameters
     ----------
     latex : str
-        Raw LaTeX equation string.
 
     Returns
     -------
     set of str
-        Normalised variable names that are summation/integration/optimisation
-        indices — these should be excluded from the physics symbol list.
-        Returns empty set on parse failure so the caller can fall back safely.
-
-    Notes
-    -----
-    Uses pylatexenc AST walking, not a hardcoded stop list. A variable like
-    ``n`` is only excluded if it appears as ``\\sum_{n=...}`` in THIS equation;
-    in another equation where ``n`` is a free physics parameter it is kept.
+        Empty set on parse failure.
     """
     try:
         w = LatexWalker(latex)
@@ -202,35 +165,26 @@ def get_bound_variables(latex):
         _collect_bound(nodes, bound)
         return bound
     except Exception:
-        # pylatexenc can fail on exotic physics macros; safe to return empty
         return set()
 
-
-WEAK_DEFINITIONS = {
-    "small", "defined as", "given by", "below", "above", "respectively",
-    "the following", "as follows", "zero", "one"
-}
-
+# ---------------------------------------------------------------------------
+# Identifier extraction — MathML + LaTeX fallbacks
+# ---------------------------------------------------------------------------
 
 def extract_identifiers(arxiv_id, eq_id, latex):
-    """Return normalized identifiers for one equation.
+    """Return normalised identifiers for one equation.
 
     Parameters
     ----------
     arxiv_id : str
-        Bare arXiv id such as ``2403.05230``.
     eq_id : str
-        LaTeXML equation id, e.g. ``S2.E1``.
     latex : str
-        Extracted equation LaTeX.
 
     Returns
     -------
     list of str
-        Sorted normalized identifiers, using no-backslash names such as ``psi``.
+        Sorted normalised keys (no backslash), e.g. ``['N', 'mathcal_E', 'rho']``.
     """
-    # detect bound variables (summation indices etc.) from the LaTeX AST —
-    # these are dropped without a hardcoded stop list
     bound = get_bound_variables(latex)
 
     symbols = set()
@@ -248,178 +202,23 @@ def extract_identifiers(arxiv_id, eq_id, latex):
     return sorted(set(out), key=lambda s: (s.lower(), s))
 
 
-def find_symbol_definitions(symbols, context, paper_dict=None):
-    """Find definitions for symbols, with local context taking strict priority.
-
-    Search order per symbol:
-
-    1. Local context window (``context``): the pre-equation prose and post-equation
-       'where...' clause combined by the caller.  This is the most specific source
-       because it is scoped to the equation's immediate surroundings.  When a
-       definition is found here, the paper-level dict is NOT consulted — this
-       prevents cross-equation contamination where a symbol used with different
-       meanings in different sections (e.g. ``E`` as a Pauli operator in §2 vs.
-       ``E`` as an edge set in §3) picks up the wrong document-wide definition.
-
-    2. Paper-level dict (``paper_dict``): fallback used ONLY when the local
-       context search finds nothing.  Captures symbols whose definition appears
-       far from the equation (first-use in document order).
-
-    Parameters
-    ----------
-    symbols : list of str
-        Normalized identifiers from ``extract_identifiers``.
-    context : str
-        Cleaned context string (pre_text + post_text) for the equation.
-    paper_dict : dict, optional
-        Paper-level symbol-to-definition mapping from ``build_paper_symbol_dict``.
-        Defaults to empty dict.
-
-    Returns
-    -------
-    dict
-        Mapping ``symbol -> description``. Missing definitions are omitted.
-    """
-    if paper_dict is None:
-        paper_dict = {}
-    definitions = {}
-    for symbol in symbols:
-        # Local context first — equation-scoped, prevents cross-section leakage.
-        desc = _definition_for_symbol(symbol, context)
-        if desc:
-            definitions[symbol] = desc
-        elif symbol in paper_dict:
-            # Paper dict as last resort — covers symbols defined far from the eq.
-            definitions[symbol] = paper_dict[symbol]
-    return definitions
-
-
-def build_paper_symbol_dict(arxiv_id):
-    """Build a paper-level symbol-to-definition dictionary by scanning the full HTML.
-
-    Physics papers define each symbol once on first use. The per-equation context
-    window often misses that definition if it appears several paragraphs away.
-    This function scans every prose paragraph in the cached HTML in document order
-    and records the first definition found for each symbol.
-
-    Strategy mirrors TaDDEx (Martin et al., 2023): treat each inline math token
-    as a potential target, apply Hearst patterns then POS nickname search, take
-    the first hit in document order.
-
-    Parameters
-    ----------
-    arxiv_id : str
-        Bare arXiv id such as ``2403.05230``.
-
-    Returns
-    -------
-    dict
-        Maps normalized symbol key (e.g. ``'phi_0'``) to its definition string.
-        Only the first definition found in document order is stored.
-    """
-    path = CACHE_DIR / f"{arxiv_id}.html"
-    if not path.exists():
-        return {}
-
-    tree = lxml_html.parse(str(path))
-    paper_dict = {}
-    nlp = _get_nlp()
-
-    # Walk every ltx_para div in document order.
-    # _clean_para converts inline <math> → $tex$ and display equations → [EQ].
-    for para in tree.xpath('//div[contains(@class,"ltx_para")]'):
-        para_text = _clean_para(para, set())  # empty target set: no [TARGET] marker
-        para_text = re.sub(r"\s+", " ", para_text).strip()
-        if not para_text:
-            continue
-
-        for sent in _split_sentences(para_text):
-            # Skip sentences without any inline math — nothing to define here.
-            if "$" not in sent:
-                continue
-
-            # Attempt definition extraction for each inline math token.
-            for m in re.finditer(r"\$([^$]{1,200})\$", sent):
-                raw_tex = m.group(1).strip()
-                norm = normalize_identifier(_clean_tex_token(raw_tex))
-                if not norm or not _keep_identifier(norm):
-                    continue
-                # First occurrence in document order wins — do not overwrite.
-                if norm in paper_dict:
-                    continue
-
-                # Pass 1: Hearst patterns on the sentence treated as a mini-context.
-                desc = _definition_for_symbol(norm, sent)
-                if desc:
-                    paper_dict[norm] = desc
-                    continue
-
-                # Pass 2: POS nickname search (ScholarPhi approach).
-                if nlp is not None:
-                    target_forms = _symbol_latex_variants(norm)
-                    target_forms.add(raw_tex)  # include the raw tex variant too
-                    pos_desc = _pos_symbol_nickname(sent, target_forms, nlp)
-                    if pos_desc:
-                        pos_clean = _clean_definition(pos_desc)
-                        if _use_definition(pos_clean):
-                            paper_dict[norm] = pos_clean
-
-    return paper_dict
-
-
-def extract_symbols_for_paper(arxiv_id):
-    """Extract identifiers and definitions for the dataset equations of one paper.
-
-    Parameters
-    ----------
-    arxiv_id : str
-        Bare arXiv id such as ``2403.05230``.
-
-    Returns
-    -------
-    list of dict
-        One record per dataset equation with keys:
-        ``number``, ``eq_id``, ``latex``, ``identifiers``, ``definitions``.
-    """
-    contexts = get_contexts(arxiv_id)
-    # Build paper-level symbol dict once — scans the full HTML in document order.
-    # Definitions found here take priority over the narrow context window because
-    # they correspond to the author's first-use definition of each symbol.
-    paper_dict = build_paper_symbol_dict(arxiv_id)
-    rows = []
-    for eq in extract_equations(arxiv_id):
-        if not eq["in_dataset"]:
-            continue
-        identifiers = extract_identifiers(arxiv_id, eq["eq_id"], eq["latex"])
-        context = contexts.get(eq["eq_id"], "")
-        definitions = find_symbol_definitions(identifiers, context, paper_dict)
-        rows.append({
-            "number": eq["number"],
-            "eq_id": eq["eq_id"],
-            "latex": eq["latex"],
-            "context": context,
-            "identifiers": identifiers,
-            "definitions": definitions,
-        })
-    return rows
-
-
 def normalize_identifier(token):
     """Normalize a raw MathML/LaTeX token to a stable symbol key.
 
     Parameters
     ----------
     token : str
-        Raw identifier token.
 
     Returns
     -------
     str
-        Cleaned symbol key, preserving useful decorators as prefixes.
+        No backslash; bare sign subscripts mapped to _plus/_minus.
     """
     token = token.strip()
     token = token.replace("\\", "")
     token = token.strip("{} ")
+    token = re.sub(r"_\+", "_plus", token)
+    token = re.sub(r"_-", "_minus", token)
     token = re.sub(r"[^A-Za-z0-9_]", "", token)
     token = re.sub(r"_+", "_", token).strip("_")
     return token
@@ -443,15 +242,16 @@ def _mathml_identifiers(arxiv_id, eq_id):
         children = [c for c in sub if isinstance(c.tag, str)]
         if len(children) >= 2:
             base_node, sub_node = children[0], children[1]
-            # skip if subscript is a complex expression (has operators or multiple
-            # identifier leaves) — text_content() would flatten it into junk like
-            # a_02k1 from a_{0,2^k-1} or c1A1c2A2_s from \expectationvalue{...}_s
+            sub_tag  = sub_node.tag if isinstance(sub_node.tag, str) else ""
+            sub_text = sub_node.text_content().strip()
+            is_bare_sign = (sub_tag.endswith("}mo") or sub_tag == "mo") and sub_text in ("+", "-")
+            if is_bare_sign:
+                base_tok = _mathml_identifier_token(base_node)
+                sign = "plus" if sub_text == "+" else "minus"
+                if base_tok:
+                    symbols.add(f"{base_tok}_{sign}")
+                continue
             if _mathml_node_is_complex(sub_node) or _mathml_node_is_complex(base_node):
-                # Subscript (or base) is a complex expression: flattening it
-                # produces junk keys (e.g. "c,D,o,p" from H_{1D,dipole}).
-                # Collect identifier leaves from the BASE node only — the subscript
-                # is discarded. This preserves "H" from H_{1D,dipole} without
-                # pulling in the subscript characters.
                 if base_node.tag.endswith("}mi"):
                     mi_list = [base_node]
                 else:
@@ -461,7 +261,7 @@ def _mathml_identifiers(arxiv_id, eq_id):
                     if t:
                         symbols.add(t)
                 continue
-            base = _mathml_identifier_token(base_node)
+            base   = _mathml_identifier_token(base_node)
             suffix = _mathml_identifier_token(sub_node)
             combined = _combine_base_subscript(base, suffix)
             if combined:
@@ -470,18 +270,21 @@ def _mathml_identifiers(arxiv_id, eq_id):
     for mi in root.xpath('.//*[local-name()="mi"]'):
         if mi.xpath('ancestor::*[local-name()="msub" or local-name()="msubsup"]'):
             continue
+        parent = mi.getparent()
+        if parent is not None:
+            ptag = parent.tag if isinstance(parent.tag, str) else ""
+            if ptag.endswith("}msup") or ptag == "msup":
+                siblings = [c for c in parent if isinstance(c.tag, str)]
+                if len(siblings) >= 2 and mi is siblings[1]:
+                    continue
         text = mi.text_content().strip()
         if not text:
             continue
-        # Skip single-letter <mi> nodes that are flanked by <mo> containing "."
-        # (MathML rendering of abbreviations like h.c. / H.c.).
-        # A standalone physics symbol never has a bare period as its neighbour.
         if len(text) == 1:
             prev_sib = mi.getprevious()
             next_sib = mi.getnext()
 
             def _is_mo_dot(node):
-                # MathML <mo> elements may carry a namespace or not; handle both.
                 return (node is not None
                         and isinstance(node.tag, str)
                         and (node.tag == "mo" or node.tag.endswith("}mo"))
@@ -495,24 +298,15 @@ def _mathml_identifiers(arxiv_id, eq_id):
 
 
 def _mathml_node_is_complex(node):
-    """Return True if a MathML node represents a multi-token expression.
+    """Return True when a MathML node contains operators or multiple identifiers.
 
     Parameters
     ----------
     node : lxml element
-        A MathML subtree (base or subscript of msub/msubsup).
 
     Returns
     -------
     bool
-        True when the node contains operator elements ``<mo>`` or more than
-        one identifier leaf ``<mi>``, meaning it is not a simple symbol.
-
-    Notes
-    -----
-    A simple subscript has exactly one ``<mi>`` or ``<mn>`` child and no
-    operators. Anything more complex (a_{0,2^k-1}, \expectationvalue{...}_s)
-    will produce garbage keys when its text content is flattened.
     """
     has_operator = bool(node.xpath('.//*[local-name()="mo"]') or
                         node.tag.endswith("}mo"))
@@ -523,7 +317,7 @@ def _mathml_node_is_complex(node):
 
 
 def _mathml_identifier_token(node):
-    """Return a compact token for a MathML subtree."""
+    """Return a compact token string for a MathML subtree."""
     text = re.sub(r"\s+", "", node.text_content().strip())
     return _clean_tex_token(text)
 
@@ -531,15 +325,10 @@ def _mathml_identifier_token(node):
 def _latex_command_identifiers(latex):
     """Collect Greek command identifiers that appear standalone in LaTeX.
 
-    A Greek command is skipped when it appears *only* as the base of a
-    subscripted expression (``\\sigma_x``) — that form is already captured by
-    ``_latex_subscript_identifiers`` as ``sigma_x``.  Emitting both ``sigma``
-    and ``sigma_x`` from the same equation inflates the symbol list with
-    spurious entries.  A negative lookahead for ``_`` filters these out.
+    Skips commands used only as subscript bases (those are captured by
+    _latex_subscript_identifiers to avoid duplicate e.g. sigma and sigma_x).
     """
     symbols = set()
-    # Match \cmd NOT immediately followed by optional whitespace + underscore.
-    # This keeps \sigma in "H = \sigma \cdot B" but drops it in "\sigma_x = ..."
     for cmd in re.findall(r"\\([A-Za-z]+)(?!\s*_)", latex):
         if cmd in GREEK:
             symbols.add(cmd)
@@ -547,13 +336,15 @@ def _latex_command_identifiers(latex):
 
 
 def _latex_decorated_identifiers(latex):
-    """Collect decorated symbols while preserving the decorator in the key.
+    r"""Collect decorated symbols, e.g. ``\mathcal{D}`` → ``mathcal_D``.
 
-    Examples
-    --------
-    ``\\mathcal{D}`` -> ``mathcal_D``
-    ``\\hat{X}`` -> ``hat_X``
-    ``\\bar{\\theta}`` -> ``bar_theta``
+    Parameters
+    ----------
+    latex : str
+
+    Returns
+    -------
+    set of str
     """
     symbols = set()
     pattern = r"\\(" + "|".join(sorted(DECORATORS, key=len, reverse=True)) + r")\s*\{([^{}]{1,40})\}"
@@ -565,38 +356,76 @@ def _latex_decorated_identifiers(latex):
 
 
 def _latex_subscript_identifiers(latex):
-    """Collect identifiers such as ``p_A``, ``r_{F}``, and ``g_{0}``."""
+    r"""Collect subscripted identifiers such as ``p_A``, ``\mathcal{T}_{+}``.
+
+    Parameters
+    ----------
+    latex : str
+
+    Returns
+    -------
+    set of str
+    """
     symbols = set()
     base = r"(?:\\[A-Za-z]+|[A-Za-z])"
-    sub = r"(?:\{[^{}]{1,40}\}|[A-Za-z0-9])"
+    sub  = r"(?:\{[^{}]{1,40}\}|[A-Za-z0-9])"
     for raw_base, raw_sub in re.findall(rf"({base})\s*_\s*({sub})", latex):
         combined = _combine_base_subscript(raw_base, raw_sub)
         if combined:
             symbols.add(combined)
+
+    deco_pat = (
+        r"\\(" + "|".join(sorted(DECORATORS, key=len, reverse=True)) + r")"
+        r"\s*\{([A-Za-z0-9]{1,10})\}"
+        r"\s*_\s*"
+        r"(\{[^{}]{1,40}\}|[+\-]|[A-Za-z0-9])"
+    )
+    for deco, body, raw_sub in re.findall(deco_pat, latex):
+        body_clean = _clean_tex_token(body)
+        if not body_clean or not _keep_identifier(body_clean):
+            continue
+        base_key = f"{deco}_{body_clean}"
+        raw_sub_strip = raw_sub.strip("{} ")
+        if re.search(r"[,\^]", raw_sub_strip):
+            continue
+        if re.search(r"[+\-]", raw_sub_strip) and len(raw_sub_strip) > 1:
+            continue
+        if raw_sub_strip in ("+", "-"):
+            sign = "plus" if raw_sub_strip == "+" else "minus"
+            symbols.add(f"{base_key}_{sign}")
+        else:
+            sub_clean = _clean_tex_token(raw_sub)
+            if sub_clean:
+                symbols.add(f"{base_key}_{sub_clean}")
+
     return symbols
 
 
 def _latex_simple_identifiers(latex):
-    """Collect remaining simple one-letter identifiers without fragmenting words.
+    """Collect remaining single-letter identifiers not captured by other passes.
 
-    Superscript labels (``^{J}``, ``^S``) are stripped early so attack-class
-    markers and perturbation-order labels do not leak as physics symbols.
-    Abbreviations like ``h.c.`` (Hermitian conjugate) are also removed.
+    Parameters
+    ----------
+    latex : str
+
+    Returns
+    -------
+    set of str
     """
     symbols = set()
-
     cleaned = re.sub(r"\\(?:operatorname|mathrm|text|textrm)\{[^{}]*\}", " ", latex)
-    # Strip h.c. / H.c. (Hermitian conjugate abbreviation) before single-letter scan.
     cleaned = re.sub(r"\b[Hh]\.c\.", " ", cleaned)
-    # Strip superscript annotations: ^{J}, ^{rm sys}, ^2, etc.
-    # These are typically order labels, attack labels, or perturbation indices —
-    # never standalone physics identifiers. Legitimate superscript symbols like
-    # e^{i\phi} are captured by _latex_command_identifiers, not here.
     cleaned = re.sub(r"\^\s*\{[^{}]{1,20}\}", " ", cleaned)
-    cleaned = re.sub(r"\^\s*[A-Za-z0-9]", " ", cleaned)
+    cleaned = re.sub(r"\^\s*[A-Za-z0-9*†‡]", " ", cleaned)
+    deco_group = "|".join(sorted(DECORATORS, key=len, reverse=True))
+    cleaned = re.sub(
+        rf"\\(?:{deco_group})\s*\{{[^{{}}]{{1,20}}\}}\s*_\s*(?:\{{[^{{}}]*\}}|[A-Za-z0-9+\-])",
+        " ", cleaned
+    )
     cleaned = re.sub(r"\\[A-Za-z]+\s*_\s*(?:\{[^{}]*\}|[A-Za-z0-9])", " ", cleaned)
     cleaned = re.sub(r"[A-Za-z]\s*_\s*(?:\{[^{}]*\}|[A-Za-z0-9])", " ", cleaned)
     cleaned = re.sub(r"\\[A-Za-z]+", " ", cleaned)
+    cleaned = re.sub(r"\{[A-Za-z0-9]{1,5}\}", " ", cleaned)
     cleaned = re.sub(r"[A-Za-z]{2,}", " ", cleaned)
 
     for letter in re.findall(r"(?<![A-Za-z])([A-Za-z])(?![A-Za-z])", cleaned):
@@ -606,28 +435,22 @@ def _latex_simple_identifiers(latex):
 
 
 def _keep_identifier(symbol, bound=None):
-    """Return True when a normalized token is worth keeping as a physics symbol.
+    """Return True when a normalised token is worth keeping as a physics symbol.
 
     Parameters
     ----------
     symbol : str
-        Normalized identifier key.
     bound : set, optional
-        Bound variable names detected from the equation AST (summation indices
-        etc.). If the symbol matches a bound variable it is dropped. Defaults
-        to empty set so callers that do not pass bound still work.
+        Bound variable names for this equation.
     """
     if bound is None:
         bound = set()
     if not symbol:
         return False
-    # drop if it is a known bound index variable in this equation
     if symbol in bound:
         return False
     if symbol in COMMAND_STOP:
         return False
-    # IDENTIFIER_STOP kept only for clear non-physics single letters that are
-    # never meaningful on their own (standard operators / functions)
     if symbol in IDENTIFIER_STOP:
         return False
     if symbol.isdigit():
@@ -642,207 +465,117 @@ def _keep_identifier(symbol, bound=None):
             return False
         if len(suffix) > 20:
             return False
-        # reject operator_subscript combos like tr_B, log_2, max_rho
         if base in IDENTIFIER_STOP or base in COMMAND_STOP:
             return False
-        # Only apply the case-insensitive stop check for multi-char bases.
-        # Single-char bases (e.g. "E" in E_v) are legitimate physics symbols;
-        # IDENTIFIER_STOP's lowercase entries ("e") must not block them.
         if len(base) > 1 and base.lower() in {s.lower() for s in IDENTIFIER_STOP}:
             return False
-        # drop if the base is a bound variable
         if base in bound:
             return False
     return True
 
 
 def _looks_like_fused_junk(symbol):
-    """Reject tokens caused by flattening long expressions into one string."""
+    """Reject tokens that are artefacts of flattening complex expressions."""
     if len(symbol) >= 14 and "_" not in symbol:
         return True
     if len(re.findall(r"[A-Z]", symbol)) >= 4 and len(symbol) >= 8:
         return True
-    if re.search(r"(time|simulation|Caching|DFTT)", symbol, flags=re.IGNORECASE):
-        return False
     return False
 
 
-def _symbol_present_case_sensitive(target_regex, chunk):
-    """Return True only if the symbol appears in the chunk with exact case.
+def _combine_base_subscript(base, suffix):
+    """Combine a raw base and subscript token into one normalised symbol key.
+
+    Returns empty string when the subscript is too complex to yield a clean key.
 
     Parameters
     ----------
-    target_regex : str
-        The regex built by ``_symbol_regex``, which embeds the symbol variants.
-    chunk : str
-        The definition chunk to check.
-
-    Returns
-    -------
-    bool
-        True when a case-sensitive search finds the symbol in the chunk.
-
-    Notes
-    -----
-    ``re.IGNORECASE`` on the full pattern causes H to match $h$ and steal its
-    definition. This guard re-runs the same regex without that flag so cue
-    words can still be case-insensitive at the call site while the symbol
-    itself is matched exactly.
-    """
-    return bool(re.search(target_regex, chunk))
-
-
-def _pos_symbol_nickname(context_text, target_forms, nlp):
-    """Search for a symbol's nickname using POS tagging (ScholarPhi approach).
-
-    Replaces the target ``$symbol$`` occurrences with ``TARGETSYM`` and all
-    other ``$...$`` tokens with ``MATHSYM``, then POS-tags the sentence.
-    Searches LEFT of ``TARGETSYM`` for a contiguous DT/JJ/NN sequence
-    (the noun phrase naming the symbol).  Falls back to searching RIGHT if
-    nothing is found on the left.
-
-    This reproduces the core logic of ScholarPhi's ``search_symbol_nickname``
-    (Allen AI, 2021) using only ``en_core_web_sm`` — no downloaded model
-    weights required.
-
-    Parameters
-    ----------
-    context_text : str
-        Raw context string, may contain ``$...$``, ``[TARGET]``, ``[EQ]``.
-    target_forms : set of str
-        LaTeX strings (without dollar signs) that spell the target symbol,
-        e.g. ``{'phi_0', '\\\\phi_0', '\\\\phi_{0}'}``.
-    nlp : spacy.Language
-        Loaded spaCy model.
+    base : str
+    suffix : str
 
     Returns
     -------
     str
-        Extracted noun phrase text, or empty string if not found.
     """
-    # Replace every $target_form$ with the placeholder TARGETSYM.
-    # Sort by length descending so longer forms match first (avoids partial hits).
-    escaped = sorted(
-        (re.escape(f) for f in target_forms), key=len, reverse=True
-    )
-    target_pat = re.compile(r"\$\s*(?:" + "|".join(escaped) + r")\s*\$")
-    text = target_pat.sub("TARGETSYM", context_text)
-
-    # Replace equation-level placeholder and any remaining $...$ math tokens.
-    text = text.replace("[TARGET]", "MATHSYM").replace("[EQ]", "MATHSYM")
-    text = re.sub(r"\$[^$]{1,200}\$", "MATHSYM", text)
-
-    doc = nlp(text)
-
-    for sent in doc.sents:
-        # Find the first TARGETSYM token in this sentence.
-        toks = list(sent)
-        target_idx = next(
-            (i for i, t in enumerate(toks) if t.text == "TARGETSYM"), None
-        )
-        if target_idx is None:
-            continue
-
-        # Walk LEFT collecting contiguous NP-tag tokens (Penn Treebank tags).
-        np_left = []
-        for i in range(target_idx - 1, -1, -1):
-            t = toks[i]
-            if t.tag_ in _NP_TAGS and t.text not in {"MATHSYM", "TARGETSYM"}:
-                np_left.insert(0, t.text)
-            else:
-                break
-        if np_left:
-            phrase = " ".join(np_left).strip().strip(",:;-")
-            # reject trivially short results (just "the", "a", one letter)
-            if len(phrase) > 2 and phrase.lower() not in {"the", "a", "an"}:
-                return phrase
-
-        # Walk RIGHT when nothing useful is left of the symbol.
-        np_right = []
-        for i in range(target_idx + 1, len(toks)):
-            t = toks[i]
-            if t.tag_ in _NP_TAGS and t.text not in {"MATHSYM", "TARGETSYM"}:
-                np_right.append(t.text)
-            else:
-                break
-        if np_right:
-            phrase = " ".join(np_right).strip().strip(",:;-")
-            if len(phrase) > 2 and phrase.lower() not in {"the", "a", "an"}:
-                return phrase
-
-    return ""
-
-
-def _definition_for_symbol(symbol, context):
-    """Return the first high-precision definition found for one symbol."""
-    if not context:
+    raw_suffix = suffix.strip()
+    if len(raw_suffix) >= 2 and raw_suffix[0] == "{" and raw_suffix[-1] == "}":
+        raw_suffix = raw_suffix[1:-1].strip()
+    if re.search(r"[,\^]", raw_suffix):
         return ""
-
-    target = _symbol_regex(symbol)
-    for chunk in _definition_chunks(context):
-        # desc capture: stop at real sentence boundaries (. ; [) but:
-        # - allow dots inside abbreviations (Eq., Fig.) by requiring dot+space+capital
-        # - allow inline math $...$ to pass through so "defined as $r_F=...$" captures fully
-        # - stop at ( to avoid pulling in parenthetical references
-        _desc = r"(?:[^.;\[()\$]|\.\s*(?![A-Z\d])|\$[^\$]{1,80}\$)+"
-        patterns = [
-            rf"^(?:where|with)?\s*{target}\s+(?:is|denotes|represents|stands for|refers to)\s+(?P<desc>{_desc})",
-            rf"^(?:where|with)?\s*{target}\s+is\s+defined\s+as\s+(?P<desc>{_desc})",
-            rf"^(?:let|take)\s+{target}\s+(?:be|denote)\s+(?P<desc>{_desc})",
-            rf"^(?:where|with)?\s*{target}\s+are\s+(?P<desc>{_desc})",
-            # pre-symbol: "the Hamiltonian $H$" or "the density matrix $\rho$"
-            rf"(?:the|a|an)\s+(?P<desc>[A-Za-z][A-Za-z\s-]{{1,50}}?)\s*{target}",
-            # post-symbol fallback: "X the Hamiltonian" (no verb)
-            rf"(?:the|a|an)\s+(?P<desc>[A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*){{0,6}})\s+{target}\s*$",
-        ]
-
-        for pattern in patterns:
-            # IGNORECASE only on cue words (where/is/denotes etc), not on the
-            # symbol token itself — otherwise H matches $h$ and steals its def
-            match = re.search(pattern, chunk, flags=re.IGNORECASE)
-            if match and _symbol_present_case_sensitive(target, chunk):
-                desc = _clean_definition(match.group("desc"))
-                if _use_definition(desc):
-                    return desc
-
-    # Hearst + pre-symbol patterns all failed.
-    # Fallback: POS-tag-based noun-phrase search (ScholarPhi approach).
-    nlp = _get_nlp()
-    if nlp is not None:
-        target_forms = _symbol_latex_variants(symbol)
-        pos_desc = _pos_symbol_nickname(context, target_forms, nlp)
-        if pos_desc:
-            pos_clean = _clean_definition(pos_desc)
-            if _use_definition(pos_clean):
-                return pos_clean
-
-    return ""
+    if "\\" in raw_suffix:
+        text_match = re.match(
+            r"\\(?:text|mathrm|rm|mathit|mathsf|mathcal|mathbb|mathscr|mathfrak)\{([A-Za-z][A-Za-z0-9]{0,24})\}$",
+            raw_suffix.strip(),
+        )
+        if text_match:
+            inner = text_match.group(1)
+            deco_m = re.match(r"\\(\w+)\{", raw_suffix.strip())
+            deco   = deco_m.group(1) if deco_m else ""
+            suffix_key = f"{deco}_{inner}" if deco in {
+                "mathcal", "mathbb", "mathscr", "mathfrak"
+            } else inner
+            if inner not in COMMAND_STOP:
+                base_clean = _clean_tex_token(base)
+                if base_clean and base_clean not in COMMAND_STOP:
+                    return f"{base_clean}_{suffix_key}"
+        return ""
+    if re.search(r"[+\-]", raw_suffix) and len(raw_suffix.strip()) > 1:
+        return ""
+    base = _clean_tex_token(base)
+    if not base or base in COMMAND_STOP:
+        return ""
+    if raw_suffix in ("+", "-"):
+        sign = "plus" if raw_suffix == "+" else "minus"
+        return f"{base}_{sign}"
+    suffix = _clean_tex_token(suffix)
+    if not suffix or suffix in COMMAND_STOP:
+        return ""
+    if len(suffix) > 20:
+        return ""
+    return f"{base}_{suffix}"
 
 
-def _symbol_regex(symbol):
-    """Build a regex that can match a normalized symbol in prose or inline LaTeX.
+def _clean_tex_token(token):
+    """Convert a tiny LaTeX token fragment to a stable symbol fragment.
 
-    Single-character symbols only match inside math-mode delimiters ``$...$``
-    to prevent matching English articles or prepositions (e.g. "a", "s") as
-    physics symbols. Multi-character symbols also allow bare word-boundary
-    matches for cases like ``rho`` appearing in prose without dollar signs.
+    Parameters
+    ----------
+    token : str
+
+    Returns
+    -------
+    str
     """
-    variants = _symbol_latex_variants(symbol)
-    inline = r"\$\s*(?:" + "|".join(sorted(map(re.escape, variants), key=len, reverse=True)) + r")\s*\$"
-    if len(symbol) == 1:
-        # bare single-letter match causes too many false definition triggers
-        return inline
-    bare = r"\b" + re.escape(symbol) + r"\b"
-    return r"(?:" + inline + r"|" + bare + r")"
+    token = token.strip()
+    token = re.sub(r"\\(?:rm|mathrm|text|textrm|mathit|mathsf)\b\s*", "", token)
+    token = token.strip("{} ")
+    token = re.sub(
+        r"\\(?:hat|widehat|bar|overline|tilde|vec|bm|boldsymbol|mathcal|mathbb|mathscr|mathfrak|mathbf)\{([^{}]+)\}",
+        r"\1", token,
+    )
+    token = token.replace("\\", "")
+    token = re.sub(r"[^A-Za-z0-9]", "", token)
+    return token
 
+# ---------------------------------------------------------------------------
+# Symbol → LaTeX variants and regex (shared by definition matching)
+# ---------------------------------------------------------------------------
 
 def _symbol_latex_variants(symbol):
-    """Return LaTeX spellings that correspond to one normalized symbol key."""
-    variants = {symbol}
+    """Return the set of LaTeX spellings that correspond to one normalised key.
 
+    Parameters
+    ----------
+    symbol : str
+        Normalised key, e.g. ``'mathcal_E'``, ``'rho'``.
+
+    Returns
+    -------
+    set of str
+    """
+    variants = {symbol}
     if symbol in GREEK:
         variants.add("\\" + symbol)
-
     if "_" in symbol:
         base, suffix = symbol.split("_", 1)
         variants.update({
@@ -864,114 +597,584 @@ def _symbol_latex_variants(symbol):
             })
         if base in DECORATORS:
             variants.add(f"\\{base}{{{suffix}}}")
-
     if len(symbol) == 1 and symbol.isalpha():
         for deco in DECORATORS:
             variants.add(f"\\{deco}{{{symbol}}}")
-
     return variants
 
 
-def _definition_chunks(context):
-    """Split context into small definition-bearing chunks near cue words."""
-    text = context.replace("[TARGET]", " [TARGET] ").replace("[EQ]", " [EQ] ")
-    pieces = re.split(r"(?<=[.;])\s+|\s+\band\b\s+|,\s+(?=[\$\\A-Za-z])", text)
+def _symbol_regex(symbol):
+    """Build a regex that matches a normalised symbol in inline LaTeX ``$...$``.
 
-    chunks = []
-    prefix = ""
-    for piece in pieces:
-        piece = re.sub(r"\s+", " ", piece).strip(" ,;:")
-        if not piece:
-            continue
-        if re.match(r"^(where|with)\b", piece, flags=re.I):
-            prefix = re.match(r"^(where|with)\b", piece, flags=re.I).group(1)
-            chunks.append(piece)
-            continue
-        if prefix and re.search(r"\b(is|are|denotes|represents|stands for|refers to|defined as)\b", piece, re.I):
-            chunks.append(prefix + " " + piece)
-            continue
-        if re.search(r"\b(where|with|let|take|is|are|denotes|represents|stands for|refers to|defined as)\b", piece, re.I):
-            chunks.append(piece)
+    Single-char symbols only match inside ``$...$`` to avoid false hits on
+    English words.  Multi-char symbols also allow bare word matches.
 
-    return chunks
+    Parameters
+    ----------
+    symbol : str
+
+    Returns
+    -------
+    str
+        A compiled-ready regex pattern string.
+    """
+    variants = _symbol_latex_variants(symbol)
+    inline = (r"\$\s*(?:" +
+              "|".join(sorted(map(re.escape, variants), key=len, reverse=True)) +
+              r")\s*\$")
+    if len(symbol) == 1:
+        return inline
+    bare = r"\b" + re.escape(symbol) + r"\b"
+    return r"(?:" + inline + r"|" + bare + r")"
+
+# ---------------------------------------------------------------------------
+# Definition cleaning
+# ---------------------------------------------------------------------------
+
+# Short spans that add no information.
+_WEAK_DEFS = frozenset({
+    "small", "defined as", "given by", "below", "above", "respectively",
+    "the following", "as follows", "zero", "one",
+})
 
 
 def _clean_definition(text):
-    """Clean a matched definition span without making it verbose."""
+    """Clean and truncate a matched definition span.
+
+    Parameters
+    ----------
+    text : str
+
+    Returns
+    -------
+    str
+    """
     text = re.sub(r"\s+", " ", text).strip()
     text = text.strip(" ,:;-")
-    text = re.sub(r"\s*\[TARGET\].*$", "", text)
-    text = re.sub(r"\s*\[EQ\].*$", "", text)
-    # strip trailing parenthetical references like "(as defined in Eq. 1)"
-    text = re.sub(r"\s*\(?\s*(?:as defined in|see|cf\.?|in Eq|of Eq)\b.*$", "", text, flags=re.IGNORECASE)
-    # strip trailing dangling prepositions/conjunctions left by partial pattern matches:
-    # e.g. "quasi-exactly solvable sextic potential with" → strip "with"
-    #      "power of two such that" → strip "such that"
-    #      "permutation matrix with free phases for every" → strip "for every"
+    # Remove trailing equation/target markers
+    text = re.sub(r"\s*\[(?:TARGET|EQ)\].*$", "", text)
+    # Cut at a new sentence boundary: period followed by a common sentence-starter
+    # word. Matching specific starters avoids false cuts on capitalised proper
+    # nouns or symbols that appear mid-definition (e.g. "Heaviside function").
+    _SENT_START = (
+        r"We|The|This|These|That|Those|Note|Consider|For|In|To|It|Now|"
+        r"Thus|Hence|Here|Then|Let|From|As|By|With|Since|Such|One|An|A"
+    )
+    m_sent = re.search(rf"\.\s*(?={_SENT_START}\b)", text)
+    if m_sent:
+        text = text[:m_sent.start() + 1]   # keep up to and including the period
+    # Strip trailing parenthetical references
     text = re.sub(
-        r"\s+(?:with|for every|for|such that|where|which|as|are|is|of|in|by|to|from|and|or|that|on)\s*$",
-        "",
-        text,
-        flags=re.IGNORECASE,
+        r"\s*\(?\s*(?:as defined in|see|cf\.?|in Eq|of Eq)\b.*$",
+        "", text, flags=re.IGNORECASE
+    )
+    # Strip trailing dangling prepositions/conjunctions
+    text = re.sub(
+        r"\s+(?:with|for every|for|such that|where|which|as|are|is|of|"
+        r"in|by|to|from|and|or|that|on|if|when)\s*$",
+        "", text, flags=re.IGNORECASE
+    )
+    # Strip trailing "for/in/of/with the [word]" fragments left by partial captures
+    text = re.sub(
+        r"\s+(?:for|in|of|with|by)\s+(?:the|a|an|its|their)\s+\w+\s*$",
+        "", text, flags=re.IGNORECASE
+    )
+    # Strip trailing articles/determiners
+    text = re.sub(
+        r"\s+(?:is\s+the|are\s+the|is\s+a|are\s+a|the|a|an)\s*$",
+        "", text, flags=re.IGNORECASE
     )
     text = text.strip(" ,:;-()")
+    # Remove trailing period left after sentence-cut stripping above
+    text = text.rstrip(".")
     return text[:180].strip()
 
 
 def _use_definition(desc):
-    """Reject weak spans that are not useful symbol meanings."""
+    """Return True when a definition span is worth emitting.
+
+    Rejects clausal fragments, action phrases, and other non-NP spans.
+
+    Parameters
+    ----------
+    desc : str
+
+    Returns
+    -------
+    bool
+    """
     if not desc:
         return False
     low = desc.lower().strip(" .,:;-")
-    if low in WEAK_DEFINITIONS:
+    if low in _WEAK_DEFS:
         return False
-    if len(low.split()) == 1 and low not in {"hamiltonian", "dissipator", "projector"}:
+    # Single-word definitions: allow content nouns (len > 4) that are not
+    # prepositions, articles, or conjunctions. "qubits", "photons", "entropy"
+    # are legitimate single-word definitions; "the", "as", "all" are not.
+    if len(low.split()) == 1:
+        if len(low) <= 4:
+            return False
+        if re.match(
+            r"^(?:the|this|that|these|those|such|some|any|all|both|each|"
+            r"other|same|also|very|more|most|less|just|then|when|where|"
+            r"which|what|with|from|into|onto|over|under|about|above|"
+            r"below|after|before|since|until|while)\b",
+            low
+        ):
+            return False
+    if re.match(
+        r"^(?:defined\s+as|given\s+by|equal\s+to|expressed\s+as|"
+        r"associated\s+with|related\s+to|proportional\s+to|"
+        r"obtained\s+by|described\s+by|determined\s+by|"
+        r"known\s+as|referred\s+to\s+as|also\s+known|denoted\s+by|"
+        r"denoted\s+as|written\s+as)\b",
+        low
+    ):
         return False
-    if low.startswith(("defined as", "given by", "equal to")):
+    # Reject single hyphenated words — these are adjective modifiers ("two-photon",
+    # "single-qubit"), not complete definitions. Real definitions include a noun.
+    if len(low.split()) == 1 and "-" in low:
+        return False
+    if re.search(r"\b(is|are|was|were|equals)\b", low):
+        return False
+    if re.match(r"^(no\s+longer|not\s+|never\s+|neither\s+)", low):
+        return False
+    if re.match(
+        r"^(using|applying|choosing|taking|making|setting|computing|evaluating)\b", low
+    ):
+        return False
+    if re.match(
+        r"^(find|compute|calculate|obtain|derive|ensure|enforce|satisfy|"
+        r"require|minimize|maximize|define|consider|describe|determine|"
+        r"represent|denote|measure|estimate|solve|build|form|generate)\b", low
+    ):
         return False
     return True
 
+# ---------------------------------------------------------------------------
+# WhereClauseParser — the entire definition subsystem
+# ---------------------------------------------------------------------------
 
-def _combine_base_subscript(base, suffix):
-    """Combine a raw base and subscript into one normalized symbol key.
+# Sentence-opening patterns that introduce a 'where' clause.
+_WHERE_START = re.compile(
+    r"^(?:where|with|here|in\s+(?:which|this\s+(?:notation|expression|case)))\b",
+    re.IGNORECASE,
+)
 
-    Rejects subscripts that contain mathematical expressions (commas, powers,
-    arithmetic operators) because cleaning them produces meaningless fused keys
-    like a_02k1 from a_{0,2^k-1}.
+# Relational verbs: symbol IS/DENOTES/etc. definition
+_REL_VERB = re.compile(
+    r"\b(?:is|are|denotes?|represents?|stands?\s+for|refers?\s+to|"
+    r"describes?|corresponds?\s+to|gives?|counts?|specifies?|means?|"
+    r"labels?|indexes?|measures?)\b",
+    re.IGNORECASE,
+)
+
+# Explicit pre-text patterns: let $X$ be Y, denote X by Y, etc.
+# Each tuple: (pattern_template, flags) where {sym} is replaced by the symbol regex.
+_PRE_EXPLICIT_TEMPLATES = [
+    r"let\s+{sym}\s+(?:be|denote|represent)\s+(?P<desc>{desc})",
+    r"(?:denote|define|write)\s+{sym}\s+(?:as|by|for)\s+(?P<desc>{desc})",
+    r"(?:denot\w+|defin\w+)\s+by\s+{sym}\s+(?:the\s+)?(?P<desc>{desc})",
+    r"call\s+{sym}\s+the\s+(?P<desc>{desc})",
+    r"set\s+{sym}\s+=\s+(?P<desc>{desc})",
+]
+
+# Description capture group: stops at sentence-ending punctuation
+_DESC_CAPTURE = r"(?:[^.;()\[\]]|\.\s*(?![A-Z\d]))+"
+
+
+def _protected_split(text):
+    """Split text on comma/semicolon/' and ' while protecting ``$...$`` tokens.
+
+    Content inside ``$...$`` is never split even if it contains commas.
+
+    Parameters
+    ----------
+    text : str
+
+    Returns
+    -------
+    list of str
     """
-    # check raw suffix before cleaning — expression characters signal a complex
-    # subscript that cannot be collapsed into a meaningful single key
-    raw_suffix = suffix.strip("{} ")
-    if re.search(r"[,\^+\-]", raw_suffix):
-        return ""
-    base = _clean_tex_token(base)
-    suffix = _clean_tex_token(suffix)
-    if not base or not suffix:
-        return ""
-    if base in COMMAND_STOP or suffix in COMMAND_STOP:
-        return ""
-    if len(suffix) > 20:
-        return ""
-    return f"{base}_{suffix}"
+    # Replace $...$ tokens with placeholders to protect their content.
+    maths = []
+
+    def _protect_math(m):
+        maths.append(m.group(0))
+        return f"__M{len(maths) - 1}__"
+
+    protected = re.sub(r"\$[^$]{1,400}\$", _protect_math, text)
+
+    # Also protect content inside parentheses (contains coordinate ranges etc.)
+    parens = []
+
+    def _protect_paren(m):
+        parens.append(m.group(0))
+        return f"__P{len(parens) - 1}__"
+
+    protected = re.sub(r"\([^)]{1,200}\)", _protect_paren, protected)
+
+    # Split on comma-space, semicolon-space, or ' and ' boundaries.
+    # The lookbehind prevents splitting "A, B, and C" at both "," and "and".
+    raw_chunks = re.split(r"[,;]\s+|\s+and\s+", protected)
+
+    # Restore placeholders in each chunk.
+    result = []
+    for chunk in raw_chunks:
+        chunk = re.sub(r"__M(\d+)__", lambda m: maths[int(m.group(1))], chunk)
+        chunk = re.sub(r"__P(\d+)__", lambda m: parens[int(m.group(1))], chunk)
+        result.append(chunk.strip())
+    return [c for c in result if c]
 
 
-def _clean_tex_token(token):
-    """Convert a tiny LaTeX token fragment into a stable symbol fragment.
+def _find_where_text(post_text):
+    """Extract the where-clause sentence from post_text.
 
-    Text-mode font commands (``\\rm``, ``\\mathrm``, ``\\text``) are stripped
-    before anything else so that subscripts like ``{\\rm sys}`` yield ``sys``
-    rather than ``rmsys``.
+    Takes only the first sentence that starts with a 'where/with/here' trigger.
+    No continuation sentences are collected — multi-sentence where clauses are
+    rare and continuation logic causes severe false-positive extraction from
+    following prose that happens to contain relational verbs.
+
+    Parameters
+    ----------
+    post_text : str
+        Everything after [TARGET] in the context string.
+
+    Returns
+    -------
+    str
+        The where-clause sentence text, or empty string if none found.
     """
-    token = token.strip()
-    # Strip text-mode font switches BEFORE brace/backslash removal so that
-    # e.g. \mathrm{sys} → {sys} → sys, and \rm sys → sys.
-    token = re.sub(r"\\(?:rm|mathrm|text|textrm|mathit|mathsf)\b\s*", "", token)
-    token = token.strip("{} ")
-    token = re.sub(
-        r"\\(?:hat|widehat|bar|overline|tilde|vec|bm|boldsymbol|mathcal|mathbb|mathscr|mathfrak|mathbf)\{([^{}]+)\}",
-        r"\1",
-        token,
+    clean = re.sub(r"\[(?:TARGET|EQ)\]", " ", post_text)
+    sents = _split_sentences(clean)
+
+    for sent in sents:
+        sent = sent.strip()
+        if sent and _WHERE_START.match(sent):
+            return sent
+
+    return ""
+
+
+def _symbol_in_math_token(math_content, symbol):
+    """Return True when symbol appears as a token inside a math expression string.
+
+    Used to detect symbols in compound expressions like ``$m<N$`` or ``$fd$``.
+
+    Parameters
+    ----------
+    math_content : str
+        Content between the ``$`` delimiters (no dollar signs).
+    symbol : str
+        Normalised symbol key.
+
+    Returns
+    -------
+    bool
+    """
+    variants = _symbol_latex_variants(symbol)
+    for v in variants:
+        # Word-boundary check adapted for LaTeX: the variant must not be
+        # immediately preceded or followed by another alphanumeric character.
+        pat = r"(?<![A-Za-z])" + re.escape(v) + r"(?![A-Za-z])"
+        if re.search(pat, math_content):
+            return True
+    return False
+
+
+def _extract_from_chunk(chunk, symbol):
+    """Extract a definition from one where-clause chunk for a given symbol.
+
+    Tries patterns in priority order:
+    1. ``$sym$ is X`` — post-symbol relational verb.
+    2. ``the X $sym$`` — pre-symbol article + noun phrase.
+    3. ``$sym$ [noun]`` — noun phrase immediately after standalone symbol.
+    4. Compound math: symbol inside ``$expr$``; noun phrase after the token.
+
+    Parameters
+    ----------
+    chunk : str
+    symbol : str
+        Normalised symbol key.
+
+    Returns
+    -------
+    str
+        Cleaned definition, or empty string if nothing confident found.
+    """
+    sym_pat = _symbol_regex(symbol)
+
+    # Pattern 1: symbol followed by relational verb — "where $N$ is the count"
+    m = re.search(sym_pat, chunk)
+    if m:
+        after = chunk[m.end():]
+        verb_m = _REL_VERB.search(after)
+        if verb_m:
+            raw = after[verb_m.end():].strip()
+            cleaned = _clean_definition(raw)
+            if _use_definition(cleaned):
+                return cleaned
+
+        # Pattern 3: single content noun directly after symbol — "$N$ qubits"
+        # Only captures one clean lowercase noun (e.g. "qubits", "photons").
+        # Multi-word extraction here produces too many false positives; longer
+        # definitions require a relational verb (Pattern 1) to be reliable.
+        np_m = re.match(r"\s+([a-z][a-z]{3,})\b", after)
+        if np_m:
+            candidate = np_m.group(1)
+            # Reject function words, articles, and common clause-openers.
+            if not re.match(
+                r"^(?:is|are|of|in|the|a|an|which|that|to|as|for|from|with|by|"
+                r"on|at|and|or|but|after|before|when|while|if|than|then|"
+                r"each|every|some|many|most|this|these|thus|also|here|"
+                r"just|only|once|more|less|very|very|such|both|given|"
+                r"value|values|case|cases|part|parts|form|forms|type|types|"
+                r"note|since|under|over|through|between|within|without)\b",
+                candidate, re.IGNORECASE
+            ):
+                cleaned = _clean_definition(candidate)
+                if _use_definition(cleaned):
+                    return cleaned
+
+    # Pattern 2: "the/a/an <NP> $sym$" — pre-symbol article + noun phrase.
+    # Guard: skip if the raw captured NP ends with "of" — that signals a
+    # genitive construction ("the spectrum of $X$") where $X$ is the object
+    # of "of", not the thing being named.
+    pre_m = re.search(
+        rf"(?:the|a|an)\s+([A-Za-z][A-Za-z\s\-]{{2,60}}?)\s*{sym_pat}",
+        chunk, re.IGNORECASE
     )
-    token = token.replace("\\", "")
-    token = re.sub(r"[^A-Za-z0-9]", "", token)
-    return token
+    if pre_m:
+        raw_np = pre_m.group(1).rstrip()
+        if not raw_np.lower().endswith((" of", " for", " in", " by", " to")):
+            cleaned = _clean_definition(raw_np)
+            if _use_definition(cleaned):
+                return cleaned
+
+    # Pattern 4: symbol appears inside a compound math token — "$m<N$", "$fd$"
+    # Only fires when the standalone regex did NOT match (symbol embedded in expr).
+    # Extracts only a single clean noun immediately following the math token.
+    if not re.search(sym_pat, chunk):
+        for tok_m in re.finditer(r"\$([^$]{1,400})\$", chunk):
+            content = tok_m.group(1)
+            if not _symbol_in_math_token(content, symbol):
+                continue
+            after = chunk[tok_m.end():].strip()
+            # Single lowercase noun directly after the token: "$N-m$ qubits"
+            np_m = re.match(r"([a-z][a-z]{3,})\b", after)
+            if np_m:
+                candidate = np_m.group(1)
+                if not re.match(
+                    r"^(?:of|in|the|a|an|which|that|to|as|for|from|with|by|"
+                    r"and|or|but|is|are|when|where|while|then|than|each|"
+                    r"every|some|both|this|that|these|those|such|here|"
+                    r"value|values|case|cases|form|forms|type|types)\b",
+                    candidate, re.IGNORECASE
+                ):
+                    cleaned = _clean_definition(candidate)
+                    if _use_definition(cleaned):
+                        return cleaned
+
+    return ""
+
+
+def _parse_respectively(where_text, identifiers):
+    """Extract definitions from 'X, Y, ... are A, B, ..., respectively'.
+
+    Parameters
+    ----------
+    where_text : str
+    identifiers : list of str
+
+    Returns
+    -------
+    dict of str → str
+        {symbol: definition}
+    """
+    # Match the 'are ... respectively' structure.
+    m = re.search(
+        r"(.+?)\s+are\s+(.+?),?\s+respectively\b",
+        where_text, re.IGNORECASE | re.DOTALL
+    )
+    if not m:
+        return {}
+
+    lhs_text = m.group(1)
+    rhs_text = m.group(2)
+
+    # Collect identifiers appearing in LHS, in left-to-right order.
+    sym_positions = []
+    for ident in identifiers:
+        pm = re.search(_symbol_regex(ident), lhs_text)
+        if pm:
+            sym_positions.append((pm.start(), ident))
+    sym_positions.sort()
+    syms = [s for _, s in sym_positions]
+    if not syms:
+        return {}
+
+    # Split RHS into definitions (protected).
+    defs = _protected_split(rhs_text)
+
+    result = {}
+    for sym, defn in zip(syms, defs):
+        cleaned = _clean_definition(defn)
+        if _use_definition(cleaned):
+            result[sym] = cleaned
+    return result
+
+
+def _parse_pre_explicit(pre_text, identifiers):
+    """Check the last 2 sentences of pre_text for explicit definition patterns.
+
+    Only fires on: let X be Y, denote X by Y, define X as Y, call X the Y.
+    Everything else is rejected — precision over recall.
+
+    Parameters
+    ----------
+    pre_text : str
+    identifiers : list of str
+
+    Returns
+    -------
+    dict of str → str
+        {symbol: definition}
+    """
+    if not pre_text:
+        return {}
+
+    clean = re.sub(r"\[(?:TARGET|EQ)\]", " ", pre_text)
+    sents = _split_sentences(clean)
+    # Only look at the two sentences immediately before the equation.
+    search_sents = " ".join(sents[-2:]) if len(sents) >= 2 else " ".join(sents)
+
+    result = {}
+    for symbol in identifiers:
+        if symbol in result:
+            continue
+        sym_pat = _symbol_regex(symbol)
+        for tmpl in _PRE_EXPLICIT_TEMPLATES:
+            pattern = tmpl.format(sym=sym_pat, desc=_DESC_CAPTURE)
+            match = re.search(pattern, search_sents, re.IGNORECASE)
+            if match:
+                # Case-sensitive guard: re.IGNORECASE lets H match $h$.
+                # Confirm the symbol appears with correct case.
+                if not re.search(sym_pat, match.group(0)):
+                    continue
+                raw = match.group("desc")
+                cleaned = _clean_definition(raw)
+                if _use_definition(cleaned):
+                    result[symbol] = cleaned
+                    break
+    return result
+
+
+def find_symbol_definitions(symbols, context, paper_dict=None, _sources=None):
+    """Extract symbol definitions from the equation's surrounding context.
+
+    Scope is strictly local to the equation:
+    1. Post-equation 'where' clause (highest confidence).
+    2. 'respectively' coordinated list in the where clause.
+    3. Explicit let/denote/define patterns in the 2 sentences before the equation.
+
+    The paper-wide ``paper_dict`` argument is accepted for API compatibility
+    but is intentionally ignored — paper-wide scanning causes cross-symbol
+    contamination and produces wrong definitions.
+
+    Parameters
+    ----------
+    symbols : list of str
+        Normalised identifiers from ``extract_identifiers``.
+    context : str
+        Context string with ``[TARGET]`` marker from ``get_contexts``, optionally
+        with post_text appended after.
+    paper_dict : dict, optional
+        Ignored. Kept for API compatibility with build_json.py.
+    _sources : dict, optional
+        Populated in-place with ``{symbol: provenance}`` where provenance is
+        ``'post_where'``, ``'respectively'``, or ``'pre_explicit'``.
+
+    Returns
+    -------
+    dict
+        ``{symbol: definition}``. Symbols without a confident definition are omitted.
+    """
+    if not symbols:
+        return {}
+
+    # Split context at [TARGET] to isolate pre/post regions.
+    parts = context.split("[TARGET]", 1)
+    pre_text  = parts[0] if parts else ""
+    post_text = parts[1] if len(parts) > 1 else ""
+
+    where_text = _find_where_text(post_text)
+
+    definitions = {}
+
+    # Pass 1: 'respectively' coordination — must happen on the full where clause
+    # before chunk splitting, since it needs both the LHS and RHS simultaneously.
+    if where_text and "respectively" in where_text.lower():
+        resp = _parse_respectively(where_text, symbols)
+        for sym, defn in resp.items():
+            definitions[sym] = defn
+            if _sources is not None:
+                _sources[sym] = "respectively"
+
+    # Pass 2: chunk-by-chunk where clause parsing for remaining symbols.
+    remaining = [s for s in symbols if s not in definitions]
+    if where_text and remaining:
+        chunks = _protected_split(where_text)
+        for sym in remaining:
+            for chunk in chunks:
+                # Only attempt extraction when the symbol is actually in this chunk.
+                if not re.search(_symbol_regex(sym), chunk):
+                    continue
+                defn = _extract_from_chunk(chunk, sym)
+                if defn:
+                    definitions[sym] = defn
+                    if _sources is not None:
+                        _sources[sym] = "post_where"
+                    break
+
+    # Pass 3: explicit patterns in the preceding 2 sentences.
+    remaining = [s for s in symbols if s not in definitions]
+    if remaining:
+        pre_defs = _parse_pre_explicit(pre_text, remaining)
+        for sym, defn in pre_defs.items():
+            definitions[sym] = defn
+            if _sources is not None:
+                _sources[sym] = "pre_explicit"
+
+    return definitions
+
+
+def extract_symbols_for_paper(arxiv_id):
+    """Extract identifiers and definitions for the dataset equations of one paper.
+
+    Parameters
+    ----------
+    arxiv_id : str
+
+    Returns
+    -------
+    list of dict
+        One record per dataset equation with keys:
+        ``number``, ``eq_id``, ``latex``, ``identifiers``, ``definitions``.
+    """
+    contexts = get_contexts(arxiv_id)
+    rows = []
+    for eq in extract_equations(arxiv_id):
+        if not eq["in_dataset"]:
+            continue
+        identifiers = extract_identifiers(arxiv_id, eq["eq_id"], eq["latex"])
+        context = contexts.get(eq["eq_id"], "")
+        definitions = find_symbol_definitions(identifiers, context)
+        rows.append({
+            "number":      eq["number"],
+            "eq_id":       eq["eq_id"],
+            "latex":       eq["latex"],
+            "context":     context,
+            "identifiers": identifiers,
+            "definitions": definitions,
+        })
+    return rows

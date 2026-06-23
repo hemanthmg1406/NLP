@@ -76,11 +76,15 @@ def extract_equations(arxiv_id, max_eq=DATASET_SIZE, cap=DATASET_SIZE):
 
         if len(eqnos) == 1:
             # One number for the whole block: a single (possibly multi-line) equation.
-            # Join each row's LaTeX with \\ so multi-line derivations stay intact.
+            # Use _row_latex on the full table rather than iterating ltx_eqn_row tr
+            # elements.  LaTeXML sometimes uses ltx_eqn_middle or plain <tr> for
+            # continuation rows in long Lindblad / master equations, so per-row
+            # iteration silently drops them.  _row_latex(table) collects every
+            # annotation[@encoding="application/x-tex"] descendant in one pass,
+            # which is complete by construction.
             number = eqnos[0].text_content().strip().strip("()")
-            line_tex = [_row_latex(r) for r in eqn_rows] or [_row_latex(table)]
-            latex = " \\\\ ".join(t for t in line_tex if t).strip()
-            eq_id = (eqnos[0].xpath('ancestor::*[@id][1]/@id') or [""])[0]
+            latex  = _row_latex(table)
+            eq_id  = (eqnos[0].xpath('ancestor::*[@id][1]/@id') or [""])[0]
             _append(rows, seen, number, latex, eq_id)
         else:
             # Many numbers: an align block where each numbered row is its own equation.
