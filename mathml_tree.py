@@ -1,47 +1,25 @@
 """Convert Presentation MathML (from LaTeXML HTML) to Node trees for tree edit distance.
 
-LaTeXML outputs pMathML (visual layout trees), not Content MathML (semantic trees).
-We normalize away pure formatting nodes before computing TED so that spacing and
-grouping differences do not inflate the distance between structurally equivalent
-equations.
+LaTeXML outputs pMathML (visual layout trees), not Content MathML. Formatting
+nodes are normalized away before TED so that spacing and grouping differences
+do not inflate the distance between structurally equivalent equations.
 
-Node labeling convention
-------------------------
-- Structural nodes (internal):  tag name only  e.g. "mfrac", "msup"
-- Leaf nodes (content-bearing): tag:text       e.g. "mi:H", "mo:+", "mn:2"
-
-Normalization rules applied during tree construction
------------------------------------------------------
-- _DROP_TAGS (mspace, malignmark, maligngroup): removed entirely.
-- _COLLAPSIBLE_TAGS (mrow, mstyle, mpadded, mphantom) with a single child:
-  collapsed to that child to avoid depth inflation from grouping wrappers.
-- <semantics> wrappers: skipped; first non-annotation child is used directly.
+Structural nodes are labeled by tag name (e.g. "mfrac", "msup"). Leaf nodes
+carry their text content (e.g. "mi:H", "mo:+", "mn:2"). During construction:
+_DROP_TAGS are removed entirely, single-child _COLLAPSIBLE_TAGS are collapsed,
+and semantics wrappers are skipped in favour of the first content child.
 """
 
 import re
 import zss
 
-
-# Tags with no semantic content — removed during tree construction.
 _DROP_TAGS = frozenset({"mspace", "malignmark", "maligngroup", "mprescripts"})
-
-# Transparent grouping tags — collapsed when they have exactly one child.
 _COLLAPSIBLE_TAGS = frozenset({"mrow", "mstyle", "mpadded", "mphantom", "merror"})
-
-# Tags that carry text content as leaf nodes.
 _LEAF_TAGS = frozenset({"mi", "mo", "mn", "mtext", "ms"})
 
 
 class Node:
-    """Expression tree node compatible with the zss simple_distance interface.
-
-    Parameters
-    ----------
-    label : str
-        Used by ZSS for rename cost computation. Structural nodes use the MathML
-        tag name; leaf nodes use 'tag:text' (e.g. 'mi:H', 'mo:+').
-    children : list of Node, optional
-    """
+    """Expression tree node compatible with the zss simple_distance interface."""
 
     def __init__(self, label, children=None):
         self.label = label
@@ -49,12 +27,10 @@ class Node:
 
     @staticmethod
     def get_children(node):
-        """ZSS interface: return child list."""
         return node.children
 
     @staticmethod
     def get_label(node):
-        """ZSS interface: return node label."""
         return node.label
 
     def __repr__(self):
@@ -62,17 +38,7 @@ class Node:
 
 
 def _local_tag(el):
-    """Return the local tag name, stripping any XML namespace prefix.
-
-    Parameters
-    ----------
-    el : lxml element
-
-    Returns
-    -------
-    str
-        Local tag name, or empty string for non-element nodes (comments, PI).
-    """
+    """Return the local tag name, stripping any XML namespace prefix."""
     tag = el.tag
     if not isinstance(tag, str):
         return ""
@@ -82,38 +48,25 @@ def _local_tag(el):
 
 
 def _leaf_text(el):
-    """Return normalized text content of a leaf MathML element."""
-    raw = (el.text or "").strip()
-    return re.sub(r"\s+", " ", raw)
+    """Return normalized whitespace-collapsed text of a leaf MathML element."""
+    return re.sub(r"\s+", " ", (el.text or "").strip())
 
 
 def _build_node(el):
     """Recursively convert one MathML element to a Node tree.
 
-    Parameters
-    ----------
-    el : lxml element
-
-    Returns
-    -------
-    Node or None
-        None when the element is a pure formatting node with no semantic content.
+    Returns None for pure formatting nodes with no semantic content.
     """
     tag = _local_tag(el)
-
     if not tag or tag in _DROP_TAGS:
         return None
 
-    # Leaf nodes: encode text content in the label.
     if tag in _LEAF_TAGS:
         text = _leaf_text(el)
         return Node(f"{tag}:{text}" if text else tag)
 
-    # Structural nodes: recurse into children.
-    children = [_build_node(c) for c in el]
-    children = [c for c in children if c is not None]
+    children = [c for c in (_build_node(c) for c in el) if c is not None]
 
-    # Collapse single-child grouping nodes — they add depth without semantics.
     if tag in _COLLAPSIBLE_TAGS:
         if len(children) == 1:
             return children[0]
@@ -126,33 +79,18 @@ def _build_node(el):
 def mathml_to_tree(table):
     """Build a normalized expression Node tree from a LaTeXML equation table.
 
-    Locates the first <math> element in the table, skips the <semantics>
-    wrapper if present, and recursively builds a Node tree from the pMathML
-    content.
-
-    Parameters
-    ----------
-    table : lxml element
-        The ltx_equation table element from the parsed HTML document.
-
-    Returns
-    -------
-    Node or None
-        Root of the expression tree, or None when no MathML is found or the
-        tree would be empty after normalization.
+    Returns the root Node, or None when no MathML is found or the tree is
+    empty after normalization.
     """
     if table is None:
         return None
 
-    # lxml's HTML parser strips MathML namespace, so tags appear without prefix.
     math_els = table.xpath(".//math")
     if not math_els:
         return None
 
     math_el = math_els[0]
 
-    # LaTeXML wraps pMathML in <semantics>; first child is the content element,
-    # subsequent children are <annotation> nodes we discard.
     semantics = math_el.find("semantics")
     if semantics is not None:
         for child in semantics:
@@ -160,10 +98,7 @@ def mathml_to_tree(table):
                 return _build_node(child)
         return None
 
-    # No semantics wrapper — build directly from math element's children.
-    children = [_build_node(c) for c in math_el]
-    children = [c for c in children if c is not None]
-
+    children = [c for c in (_build_node(c) for c in math_el) if c is not None]
     if not children:
         return None
     if len(children) == 1:
@@ -172,55 +107,24 @@ def mathml_to_tree(table):
 
 
 def _count_nodes(node):
-    """Count total nodes in a tree (recursive DFS).
-
-    Parameters
-    ----------
-    node : Node
-
-    Returns
-    -------
-    int
-    """
+    """Return total node count via recursive DFS."""
     return 1 + sum(_count_nodes(c) for c in node.children)
 
 
 def _label_dist(label_a, label_b):
-    """ZSS label comparison: 0 if identical, 1 otherwise.
-
-    Parameters
-    ----------
-    label_a : str
-    label_b : str
-
-    Returns
-    -------
-    int
-    """
+    """ZSS label cost: 0 if identical, 1 otherwise."""
     return 0 if label_a == label_b else 1
 
 
 def tree_edit_distance(tree_a, tree_b):
-    """Compute normalized tree edit distance similarity in [0, 1].
+    """Compute normalized TED similarity in [0, 1].
 
-    Uses the Zhang-Shasha algorithm (zss.simple_distance). Raw TED is an
-    integer edit count; we normalize by max(nodes(A), nodes(B)) to produce a
-    bounded similarity score:
+    Uses Zhang-Shasha (zss.simple_distance). Raw TED is normalized by
+    max(nodes(A), nodes(B)) to give a bounded similarity score:
+        sim = 1 - TED(A, B) / max(nodes(A), nodes(B))
 
-        tree_sim = 1 - TED(A, B) / max(nodes(A), nodes(B))
-
-    Returning 0.0 for parse failures (None trees) prevents two failed parses
-    from being classified as 'strong' due to a spurious similarity of 1.0.
-
-    Parameters
-    ----------
-    tree_a : Node or None
-    tree_b : Node or None
-
-    Returns
-    -------
-    float
-        Similarity in [0, 1]. 0.0 if either tree is None.
+    Returns 0.0 for None trees or trees larger than 200 nodes (multi-line
+    arrays where ZSS would be O(n^2 m^2) and results are unreliable).
     """
     if tree_a is None or tree_b is None:
         return 0.0
@@ -229,12 +133,7 @@ def tree_edit_distance(tree_a, tree_b):
     size_b = _count_nodes(tree_b)
     max_size = max(size_a, size_b)
 
-    if max_size == 0:
-        return 0.0
-
-    # Guard against extremely large trees that would make ZSS slow (O(n^2 m^2)).
-    # Equations with > 200 nodes are likely multi-line arrays; skip TED for them.
-    if max_size > 200:
+    if max_size == 0 or max_size > 200:
         return 0.0
 
     ted = zss.simple_distance(
@@ -243,5 +142,4 @@ def tree_edit_distance(tree_a, tree_b):
         get_label=Node.get_label,
         label_dist=_label_dist,
     )
-
     return max(0.0, 1.0 - ted / max_size)

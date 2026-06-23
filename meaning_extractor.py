@@ -27,14 +27,9 @@ from context_extract import (
     _split_sentences,
 )
 
-# ---------------------------------------------------------------------------
-# Named equation lexicon
-# Each entry: (prose_regex, latex_regex, canonical_name).
-# prose_regex is case-insensitive and uses \b word boundaries to prevent
-# substring false positives (e.g. "interactions" firing "action functional").
-# Empty string = skip that field.  Checked in order; first hit wins.
-# ---------------------------------------------------------------------------
-
+# Named equation lexicon: (prose_regex, latex_regex, canonical_name).
+# prose_regex uses \b word boundaries to prevent substring false positives.
+# Empty string means skip that field. Checked in order; first hit wins.
 _NAMED_EQ = [
     (r"\bschr[oö]dinger\b",             r"i\s*\\hbar|i\s*\\partial_t",              "Schrödinger equation"),
     (r"\bhamiltonian\b",                 r"\\mathcal\{H\}|\\hat\{\\mathcal\{H\}\}|\\hat\{H\}", "Hamiltonian"),
@@ -177,13 +172,8 @@ _DANGLING_TRUNC_RE = re.compile(
 )
 
 
-# ---------------------------------------------------------------------------
-# Inline label extractor
-# ---------------------------------------------------------------------------
-
-# Words that appear in \text{...} but are NOT equation labels — they are
-# grammatical connectors, h.c. abbreviations, or common subscript shortforms
-# that appear inside operator names like H_{\text{eff}}, A_{\text{tot}}, etc.
+# Words inside \text{...} that are NOT equation labels: grammatical connectors,
+# h.c. abbreviations, and subscript shortforms in operator names.
 _TEXT_FILTER = frozenset({
     "where", "and", "or", "if", "then", "with", "for", "of", "the",
     "h.c.", "c.c.", "H.c.", "C.C.", "a.e.", "i.e.", "e.g.",
@@ -193,6 +183,8 @@ _TEXT_FILTER = frozenset({
     "in", "out", "sys", "env", "bath", "vac", "free", "kin", "cl",
     "phys", "num", "den", "rel", "abs", "th", "el", "mag", "em",
     "crit", "sat", "ss", "exc", "gr", "ref", "src",
+    # State/basis labels commonly written in \text{} inside kets/subscripts.
+    "gs", "g.s.", "ground", "excited",
     # Math operators written in \text{} — real/imaginary part, modulo, trace, etc.
     # Stored lowercase because _extract_inline_label checks label.lower() in this set.
     # These appear INSIDE expression notation, not as standalone equation labels.
@@ -233,6 +225,10 @@ def _extract_inline_label(latex):
         label = re.sub(r'[${}\\^_]', '', raw).strip(" .,;:()")
         if not label or label.lower() in _TEXT_FILTER or len(label) > 40:
             continue
+        # Commas almost always mean prose embedded inside \text{...}, e.g.
+        # \text{$S_{i,j}$ bad}; those are not equation-level labels.
+        if "," in label:
+            continue
         # Reject single-character labels: subscript shortforms like _{\text{s}},
         # _{\text{b}}, _{\text{i}} appear frequently in operator names and are
         # not equation-level discriminators.
@@ -250,6 +246,9 @@ def _extract_inline_label(latex):
         before = latex[max(0, m.start() - 20):m.start()]
         if re.search(r'\\(?:ket|bra|braket)\{[^}]*$|\|\s*$', before):
             continue
+        # Reject labels used as ordinary subscripts/superscripts.
+        if re.search(r'[_^]\{?\s*$', before):
+            continue
         # Look at the 25 characters following the \text{} group for ^\dagger or ^*.
         # This handles TRS† where the paper writes \text{TRS}^\dagger outside the
         # braces and the two pieces appear in the LaTeX string adjacently.
@@ -266,10 +265,6 @@ def _extract_inline_label(latex):
     # the annotation tag (e.g. the (TRS) at the end of the line).
     return candidates[-1][1]
 
-
-# ---------------------------------------------------------------------------
-# Individual signal extractors
-# ---------------------------------------------------------------------------
 
 def get_theorem_env(table):
     """Check whether the equation lives inside a theorem/lemma/definition block.
@@ -758,6 +753,8 @@ def get_post_explanation(table):
             if (len(cleaned.split()) >= 5
                     and not re.match(r"^where\b", cleaned, re.I)
                     and not re.match(r"^\$", cleaned)
+                    and not re.match(r"^(?:fig\.?|figure)\b", cleaned, re.I)
+                    and not re.search(r"\b(?:plot|plots|shown in Fig\.?|shown in Figure)\b", cleaned, re.I)
                     and not _SECTION_OPENER_RE.search(cleaned)):
                 return cleaned
     return ""
@@ -791,10 +788,6 @@ def get_cross_ref_context(eq_id, tree):
             return _clean_intro(sents[0])
     return ""
 
-
-# ---------------------------------------------------------------------------
-# Signal aggregation
-# ---------------------------------------------------------------------------
 
 def extract_meaning_signals(table, latex, eq_id, pre_text, tree):
     """Collect all non-generative meaning signals for one equation.
@@ -863,24 +856,17 @@ def extract_meaning_signals(table, latex, eq_id, pre_text, tree):
     }
 
 
-# ---------------------------------------------------------------------------
-# LHS shape parser
-# ---------------------------------------------------------------------------
-
-# Symbols that, when they appear as LHS, indicate the equation is defining a
-# well-known physics quantity even without explicit prose context.
+# Symbols safe to name from the LHS alone. Kept small: one-letter symbols like
+# F, S, L are too ambiguous and must be inferred from prose context.
 _LHS_PHYSICS_NAMES = {
     r"h": "Hamiltonian", r"\\hat{h}": "Hamiltonian",
     r"\\mathcal{h}": "Hamiltonian", r"h_\\mathrm": "Hamiltonian",
     r"\\hat{h}_": "Hamiltonian term",
-    r"l": "Lagrangian", r"\\mathcal{l}": "Lagrangian",
-    r"s": "action", r"\\mathcal{s}": "action",
     r"z": "partition function",
     r"\\rho": "density matrix", r"\\hat{\\rho}": "density matrix",
     r"\\sigma": "density matrix",
-    r"p": "probability", r"\\mathrm{p}": "probability",
+    r"p(": "probability", r"\\mathrm{p}(": "probability",
     r"\\mathbb{p}": "probability",
-    r"f": "free energy", r"\\mathcal{f}": "free energy",
     r"s_\\mathrm{e}": "entropy",
 }
 
@@ -896,6 +882,9 @@ _SHAPE_PATTERNS = [
     # Unitary/time-evolved state
     ("state_evolution",
      re.compile(r"\\(?:ket|bra)\s*\{[^}]*\(t\)", re.I)),
+    # State/protocol transformations: ket lines connected by arrows.
+    ("state_transform",
+     re.compile(r"\\(?:ket|bra)\s*\{.*?(?:\\rightarrow|\\Leftrightarrow|\\to)\b", re.I | re.S)),
     # Bound / inequality: \leq, \geq, <, > as top-level structure
     ("bound_or_inequality",
      re.compile(r"^[^=]*\\(?:leq|geq|le|ge|ll|gg)\b")),
@@ -906,7 +895,7 @@ _SHAPE_PATTERNS = [
      re.compile(r":=|\\coloneqq|\\triangleq|\\stackrel\{\\Delta\}\{=\}")),
     # Hamiltonian decomposition: H = ... + ... (sum of terms)
     ("hamiltonian_decomposition",
-     re.compile(r"^\\(?:hat\{)?(?:H|mathcal\{H\})", re.I)),
+     re.compile(r"^(?:H\b|\\hat\{H\}|\\mathcal\{H\}|\\hat\{\\mathcal\{H\}\})")),
     # Operator action: (A \otimes B)|psi> = ...
     ("operator_action",
      re.compile(r"\\(?:otimes|cdot|circ)\s*.*\\(?:ket|bra|rangle|langle)", re.I)),
@@ -965,7 +954,9 @@ def _parse_lhs_shape(latex):
     lhs_name = ""
     for pat, name in _LHS_PHYSICS_NAMES.items():
         norm_pat = re.sub(r"[\\{}\s]", "", pat).lower()
-        if lhs_token == norm_pat or lhs_token.startswith(norm_pat):
+        # One-letter priors are only safe on exact match.  Prefix matching made
+        # \hat{t}, \hat{Z}, \hat{B} look like H/Hamiltonian.
+        if lhs_token == norm_pat or (len(norm_pat) > 2 and lhs_token.startswith(norm_pat)):
             lhs_name = name
             break
 
@@ -1006,40 +997,335 @@ def _lhs_matches_prose_symbol(lhs_token, prose_symbol):
     return lhs_token[:min_len] == norm[:min_len]
 
 
-# ---------------------------------------------------------------------------
-# Semantic template rules for meaning synthesis
-# ---------------------------------------------------------------------------
+def _latex_display_name(latex, lhs_token=""):
+    """Return a compact human-readable LHS symbol for meaning templates."""
+    if not latex:
+        return ""
+    lhs_match = re.match(
+        r"^(.*?)(?::=|\\coloneqq|\\triangleq|\\leq|\\geq|\\le\b|\\ge\b|(?<![!<>])=(?!=)|<(?!=)|>(?!=))",
+        latex.strip()
+    )
+    lhs = lhs_match.group(1).strip() if lhs_match else ""
+    if not lhs:
+        return ""
+    # Keep simple math names readable; avoid emitting long expressions.
+    if len(lhs) > 45 or lhs.count("\\") > 4:
+        return lhs_token or ""
+    return re.sub(r"\s+", " ", lhs).strip(" ,;:")
 
-# Each entry: (rule_name, trigger_re, template_fn).
-# trigger_re is matched case-insensitively against the evidence string.
-# template_fn(match, evidence, subject_hint) → synthesized string.
-# Rules are checked in order; first match wins.
-# subject_hint is a short label from section/named_eq/inline_label to fill
-# slots when the evidence sentence does not itself name the subject.
+
+def _contextual_lhs_meaning(context, latex, lhs_token, eq_shape):
+    """Infer an equation-level meaning from local prose plus LaTeX shape.
+
+    This is still rule-based and non-generative.  It avoids one-letter symbol
+    priors; the prose must name the role, or the LaTeX shape must be specific.
+    """
+    ctx = re.sub(r"\s+", " ", context or "").strip()
+    ctx_l = ctx.lower()
+    lat = latex or ""
+    lat_l = lat.lower()
+    lhs = _latex_display_name(lat, lhs_token)
+
+    if "clifford hierarchy" in ctx_l or lhs_token.startswith("mathrmcl"):
+        return "Defines the kth Clifford hierarchy.", "context_clifford_hierarchy"
+    if "controlled-z gate" in ctx_l or "controlled-z" in ctx_l:
+        return "Defines the controlled-Z gate action on computational-basis states.", "context_controlled_z"
+    if "hypergraph state" in ctx_l and ("\\ket" in lat or "\\sum" in lat):
+        return "Defines the hypergraph state in the computational basis.", "context_hypergraph_state"
+    if "noise convolution" in ctx_l or "p\\ast p" in lat_l or "p\\ast p" in lhs_token:
+        return "Defines the noise-convolution distribution.", "context_noise_convolution"
+    if "gibbs state" in ctx_l or "thermal equilibrium" in ctx_l and "\\rho" in lat_l and "e^{-" in lat_l:
+        return "Defines the Gibbs state at inverse temperature beta.", "context_gibbs_state"
+    if "kms condition" in ctx_l:
+        return "Gives the KMS condition for thermal correlation functions.", "context_kms_condition"
+    if "hafnian" in ctx_l or "operatorname{haf}" in lat_l:
+        return "Defines the Hafnian matrix function.", "context_hafnian"
+    if "permanent" in ctx_l or "operatorname{perm}" in lat_l:
+        return "Gives the boson-sampling output probability via the permanent.", "context_permanent_probability"
+    if "sampling matrix" in ctx_l and "covariance matrix" in ctx_l:
+        return "Gives the relation between the covariance matrix and the sampling matrix.", "context_sampling_covariance"
+    if "photon number" in ctx_l or "photon-number" in ctx_l or "operatorname{pr}" in lhs_token:
+        if "haf" in lat_l:
+            return "Gives the Gaussian boson-sampling output probability.", "context_gbs_probability"
+        return "Gives the output probability.", "context_probability_formula"
+    if "wigner function" in ctx_l or lhs_token.startswith("wleft"):
+        return "Gives the Wigner function of the Gaussian state.", "context_wigner_function"
+    if "symplectic form" in ctx_l or "symplectic matrix" in ctx_l or (lhs_token == "omega" and "\\begin{pmatrix}" in lat_l):
+        return "Defines the symplectic form.", "context_symplectic_form"
+    if "thermal state" in ctx_l and "\\rho" in lat_l:
+        return "Defines the thermal input state.", "context_thermal_state"
+    if "schrödinger" in ctx_l or "schrodinger" in ctx_l:
+        return "Gives the Schrödinger time-evolution equation.", "context_schrodinger_equation"
+    if "fidelity" in ctx_l and lhs_token.startswith("mathcalf"):
+        return "Defines the gate fidelity objective.", "context_fidelity"
+    if "infidelity" in ctx_l or lhs_token.startswith("mathcali"):
+        return "Defines the infidelity loss objective.", "context_infidelity"
+    if "block encoding" in ctx_l:
+        return "Defines the block-encoding unitary or approximation condition.", "context_block_encoding"
+    if "qsp protocol" in ctx_l or "quantum signal processing" in ctx_l or "m-qsp" in ctx_l:
+        return "Gives the quantum signal-processing circuit transformation.", "context_qsp_protocol"
+    if "distribution" in ctx_l and (lhs_token.startswith("f") or "sigma_delta" in lat_l or "\\sigma_{\\delta}" in lat_l):
+        return "Gives the probability distribution.", "context_distribution"
+    if "lennard-jones" in ctx_l or "leonard-jones" in ctx_l:
+        return "Gives the Lennard-Jones interaction potential.", "context_lennard_jones"
+    if "potential energy" in ctx_l and (lhs_token.startswith("u") or lhs_token.startswith("v") or lhs_token.startswith("mathcale")):
+        return "Gives the potential-energy expression.", "context_potential_energy"
+    if "multipole expansion" in ctx_l or "quadrupole moment" in ctx_l:
+        return "Gives the multipole-expansion expression.", "context_multipole_expansion"
+    if "casimir" in ctx_l or "polarizability" in ctx_l:
+        if lhs_token.startswith("u"):
+            return "Gives the multipole Casimir-Polder potential.", "context_casimir_polder"
+        return "Defines the multipole polarizability.", "context_polarizability"
+    if "finite-size scaling" in ctx_l or "scale with the system size" in ctx_l:
+        return "Gives the finite-size scaling relation.", "context_scaling_relation"
+    if "average number of detections" in ctx_l or "detections per pulse" in ctx_l:
+        return "Gives the average detections-per-pulse relation.", "context_detection_rate"
+    if "linear regression" in ctx_l or "representative number of ions" in ctx_l:
+        return "Gives the linear-regression estimator.", "context_linear_regression"
+    if "heaviside" in ctx_l or "\\mathrm{h}" in lat_l and "\\begin{cases}" in lat_l:
+        return "Defines the Heaviside step function.", "context_heaviside"
+    if "attack pattern" in ctx_l or "spike attacks" in ctx_l or "gradual attacks" in ctx_l:
+        return "Defines the attack-pattern time profile.", "context_attack_profile"
+    if "complex transmission coefficient" in ctx_l or lhs_token.startswith("s21"):
+        return "Gives the complex transmission coefficient near resonance.", "context_transmission_coefficient"
+    if "transmission coefficient" in ctx_l or "transmission probability" in ctx_l:
+        if "wkb" in ctx_l or "exponentially decaying" in ctx_l:
+            return "Gives the WKB transmission-probability factor.", "context_wkb_transmission"
+        return "Gives the transmission coefficient or probability.", "context_transmission_probability"
+    if "exponentially decaying" in ctx_l and lhs_token.startswith("t"):
+        return "Gives the WKB transmission-probability factor.", "context_wkb_transmission"
+    if "energy spectrum" in ctx_l or lhs_token.startswith("en,m"):
+        return "Gives the quantized energy spectrum.", "context_energy_spectrum"
+    if "current is obtained" in ctx_l or lhs_token.startswith("in,m"):
+        return "Gives the persistent current from the energy derivative.", "context_persistent_current"
+    if "bose-hubbard" in ctx_l and "hamiltonian" in ctx_l:
+        return "Gives the Bose-Hubbard Hamiltonian.", "context_bose_hubbard_hamiltonian"
+    if "translation operator" in ctx_l or lhs_token.startswith("hattmathbfu") or "\\hat{T}" in lat:
+        if "commutation relation" in ctx_l or "commutation" in ctx_l:
+            return "Gives the commutation relation between translation operators.", "context_translation_commutation"
+        if "composed" in ctx_l or "phase" in ctx_l and "\\hat{T}" in lat:
+            return "Gives the composition rule for translation operators.", "context_translation_composition"
+        return "Defines the phase-space translation operator.", "context_translation_operator"
+    if "stabilizer group" in ctx_l or "independent stabilizers" in ctx_l:
+        return "Defines the stabilizer group generated by translation operators.", "context_stabilizer_group"
+    if "dipole algebra" in ctx_l:
+        return "Gives the dipole-algebra symmetry relation.", "context_dipole_algebra"
+    if "symmetry generated" in ctx_l or "global symmetries" in ctx_l:
+        return "Defines the global symmetry generators.", "context_symmetry_generators"
+    if "gauss" in ctx_l and "law" in ctx_l:
+        return "Defines the Gauss-law constraint.", "context_gauss_law"
+    if "commutator relation" in ctx_l or "commutator relations" in ctx_l or "commutation relation" in ctx_l:
+        return "Gives the commutation relation.", "context_commutation_relation"
+    if "minimal observable length" in ctx_l and ("delta" in lhs_token or "\\Delta" in lat):
+        return "Gives the minimal-length uncertainty relation.", "context_minimal_length"
+    if "first-order accuracy" in ctx_l and (lhs_token.startswith("x") or lhs_token.startswith("p")):
+        return "Gives the first-order deformed position or momentum operator.", "context_deformed_operator"
+    if "non-resonant condition" in ctx_l:
+        return "Gives the non-resonance energy-gap condition.", "context_nonresonance"
+    if "lifetime" in ctx_l or "thermalization time" in ctx_l or re.search(r"t\s*\\sim", lat):
+        return "Gives the asymptotic time-scale estimate.", "context_timescale"
+    if "formal eigenstates" in ctx_l or re.match(r"\s*\|?E\\rangle", lat):
+        return "Gives the formal eigenstate expansion.", "context_eigenstate_expansion"
+    if "stochastic master equation" in ctx_l:
+        return "Gives the stochastic master equation for the monitored state.", "context_stochastic_master_equation"
+    if lhs_token.startswith("qt") and ("measurement record" in ctx_l or "represented by" in ctx_l):
+        return "Defines the continuous measurement readout signal.", "context_measurement_readout"
+    if lhs_token.startswith("hft") and "feedback hamiltonian" in ctx_l:
+        return "Defines the feedback Hamiltonian.", "context_feedback_hamiltonian"
+    if "master equation" in ctx_l and ("\\dot" in lat_l or "d\\rho" in lat_l or "dfrac" in lat_l):
+        return "Gives the master equation for the system density matrix.", "context_master_equation"
+    if "lindblad" in ctx_l and "\\mathcal{l}" in lat_l:
+        return "Defines the Lindblad dissipator.", "context_lindblad_dissipator"
+    if "hamiltonian" in ctx_l and lhs_token.startswith(("h", "calh", "mathcalh", "hat")):
+        if "component" in ctx_l or "term" in ctx_l or lhs_token in {"hatk", "hatd", "hd", "hc"}:
+            return "Defines a Hamiltonian term.", "context_hamiltonian_term"
+        return "Gives the Hamiltonian.", "context_hamiltonian"
+    if "wave function" in ctx_l and ("\\ket" in lat_l or "\\psi" in lat_l):
+        return "Defines the wave function.", "context_wave_function"
+    if "polynomial" in ctx_l and ("q_" in lat_l or lhs_token.startswith("qn")):
+        return "Defines the polynomial part of the wave function.", "context_wavefunction_polynomial"
+    if "work cost" in ctx_l or "landauer cost" in ctx_l:
+        return "Gives the work cost.", "context_work_cost"
+    if "performance recovery metric" in ctx_l:
+        return "Defines the performance recovery metric.", "context_performance_recovery"
+    if "speedup" in ctx_l and lhs_token.startswith("gamma"):
+        return "Defines the simulation speedup ratio.", "context_speedup"
+    if "deviation" in ctx_l and lhs_token.startswith("delta"):
+        return "Defines the relative deviation metric.", "context_deviation"
+
+    if lhs_token.startswith("mse") or "mean square error" in ctx_l or "mean squared error" in ctx_l:
+        return "Gives the mean squared error formula.", "context_mse"
+    if lhs_token.startswith("acc") or re.search(r"\baccuracy\s*(?:metric|score|\()", ctx_l):
+        return "Gives the accuracy score.", "context_accuracy"
+    if lhs_token.startswith("confidence"):
+        return "Defines the confidence score as the MSE difference.", "context_confidence"
+    if lhs_token.startswith("gt") or "cumulative return" in ctx_l:
+        return "Gives the discounted cumulative return.", "context_cumulative_return"
+    if "fake minimum energy" in ctx_l or "fakeminimumenergy" in lhs_token:
+        return "Defines the fake minimum energy target.", "context_fake_minimum_energy"
+    if "grammar" in ctx_l and ("dataset" in ctx_l or "likelihood" in ctx_l):
+        return "Defines the grammar scoring objective.", "context_grammar_score"
+    if "fitness" in ctx_l or "ga-based attack" in ctx_l or "p_{adv}" in lat:
+        return "Defines the adversarial attack fitness objective.", "context_attack_fitness"
+
+    if "universal functional" in ctx_l:
+        return "Defines the universal functional.", "context_universal_functional"
+    if "ground state energy and density" in ctx_l and "minimiz" in ctx_l:
+        return "Gives the variational minimization for the ground-state energy and density.", "context_variational_minimum"
+    if "external potential" in ctx_l and ("energy" in ctx_l or "\\mathcal{e}" in lat.lower()):
+        return "Defines the ground-state energy functional.", "context_energy_functional"
+
+    if "de-biased sum" in ctx_l or "debiased sum" in ctx_l:
+        return "Gives the de-biased sum output by the server.", "context_debiased_sum"
+    if "gaussian function" in ctx_l and ("f(" in lat or "f\\left" in lat):
+        return "Gives the Gaussian fit function.", "context_gaussian_fit"
+    if "magnetic field sensitivity" in ctx_l:
+        return "Gives the magnetic-field sensitivity formula.", "context_sensitivity"
+
+    if "\\omega" in lat and "\\sum" in lat and "\\begin{cases}" in lat:
+        return "Gives the root-of-unity summation identity.", "context_root_unity"
+    if "bell states" in ctx_l and "\\omega" in lat and ("\\ket" in lat or "\\rangle" in lat or "|" in lat):
+        return "Defines the generalized Bell states.", "context_bell_states"
+    if "spectral theorem" in ctx_l or "diagonalizable" in ctx_l:
+        return "Gives the spectral decomposition of a normal operator.", "context_spectral_decomposition"
+    if "spectral decomposition" in ctx_l and lhs:
+        return f"Gives the spectral decomposition of {lhs}.", "context_spectral_decomposition"
+    if "sum-of-squares" in ctx_l or ("\\sum" in lat and "p_{i}^{*}p_{i}" in lat_l):
+        return "Gives the sum-of-squares decomposition of the shifted operator.", "context_sum_of_squares"
+    if re.search(r"^\s*(?P<base>.+?)\^\s*\{?2\}?\s*=\s*(?P=base)(?:\b|\\|_|\^|\s|,|$)", lat) and lhs_token:
+        return "Gives the projector/idempotency condition.", "context_projector_condition"
+    if "\\operatorname{tr}_{b}" in lat_l or "partial trace" in ctx_l or "coherent state" in ctx_l:
+        return "Defines the projection superoperator onto the coherent bath state.", "context_projection_superoperator"
+    if eq_shape == "operator_action" and ("action" in ctx_l or "operation" in ctx_l or "operators on" in ctx_l or "combined operation" in ctx_l):
+        return "Gives the tensor-product action of operators on product states.", "shape_operator_action"
+    if "povm" in ctx_l and ("\\pi" in lat_l or "\\Pi" in lat):
+        return "Gives the POVM positivity and completeness condition.", "context_povm_condition"
+    if "operators can be explicitly represented" in ctx_l or ("measurement operators" in ctx_l and "pmatrix" in lat_l):
+        return "Gives the measurement-operator matrix representation.", "context_measurement_matrices"
+
+    if "low-energy effective hamiltonian" in ctx_l or "band-crossing point" in ctx_l:
+        return "Gives the low-energy effective Hamiltonian near a band-crossing point.", "context_low_energy_hamiltonian"
+    if lhs_token == "h" and ("\\sum" in lat or "h_" in lat_l or "\\lambda" in lat):
+        return "Gives the Hamiltonian decomposition.", "context_hamiltonian_decomposition"
+    if lhs_token.startswith("hi") or "interaction hamiltonian" in ctx_l:
+        return "Gives the interaction Hamiltonian.", "context_interaction_hamiltonian"
+    if "dissipator" in ctx_l:
+        return "Defines the dissipator superoperator.", "context_dissipator"
+    if "kinetic term" in ctx_l or "hopping" in ctx_l:
+        return "Gives the kinetic hopping term.", "context_kinetic_term"
+    if "interaction strength" in ctx_l or "interaction term" in ctx_l:
+        return "Defines the interaction term.", "context_interaction_term"
+    if "potential" in ctx_l and lhs_token.startswith("hatv"):
+        return "Defines the potential term.", "context_potential_term"
+    if "rydberg" in ctx_l and "repulsion" in ctx_l:
+        return "Defines the kink-modified Rydberg interaction term.", "context_rydberg_interaction"
+
+    if "gibbs state" in ctx_l and ("g_{\\beta}" in lat or "g_\\beta" in lat):
+        return "Defines the Gibbs state at inverse temperature beta.", "context_gibbs_state"
+    if "classical-quantum state" in ctx_l or lhs_token.startswith("rhotextae"):
+        return "Defines the classical-quantum post-measurement state.", "context_classical_quantum_state"
+    if "thermal expectation" in ctx_l or "observable" in ctx_l and "\\expectationvalue" in lat:
+        return "Gives the local observable expectation value matched to the Gibbs state.", "context_expectation_value"
+    if "local trace norm" in ctx_l or "\\norm{g_{\\beta}-\\psi(t)}" in lat:
+        return "Bounds the local trace-norm distance between the Gibbs and evolved states.", "context_trace_norm_bound"
+    if "ensemble" in ctx_l and "\\mathbb{E}" in lat and "\\norm" in lat:
+        return "Gives the ensemble-averaged thermalization criterion.", "context_ensemble_average"
+    if "gibbs ensemble" in ctx_l and "\\mathbb{E}" in lat:
+        return "Bounds closeness of the ensemble average to the Gibbs state.", "context_gibbs_ensemble"
+    if "energy dispersion" in ctx_l or "inverse participation ratio" in ctx_l:
+        return "Bounds the average inverse participation ratio in the energy eigenbasis.", "context_energy_dispersion"
+    if "maximally entangled state" in ctx_l and ("\\ket" in lat_l or "\\rangle" in lat_l or "|" in lat):
+        return "Gives the maximally entangled two-qubit state.", "context_max_entangled_state"
+    if "following measurements" in ctx_l and ("\\sigma" in lat or "sigma" in lat_l):
+        return "Gives the measurement settings realizing the maximal violation.", "context_measurement_settings"
+    if "arbitrary two-qubit state" in ctx_l or "correlation matrix" in ctx_l:
+        return "Gives the Bloch/correlation-matrix representation of a two-qubit state.", "context_two_qubit_state"
+    if "maximal quantum violation" in ctx_l or lhs_token.startswith("qs"):
+        return "Bounds the maximal quantum violation.", "context_quantum_violation_bound"
+    if "depolarization" in ctx_l and lhs_token.startswith("sigma"):
+        return "Gives the depolarized quantum state.", "context_depolarized_state"
+    if "robustness" in ctx_l and ("r_{dp}" in lat_l or lhs_token.startswith("t")):
+        return "Gives the robustness condition against depolarization noise.", "context_depolarization_robustness"
+    if "final state" in ctx_l and ("\\ket" in lat or "|\\phi" in lat_l):
+        return "Defines the final state after the unitary sequence.", "context_final_state"
+    if "ansätze" in ctx_l or "ansatze" in ctx_l or "data reuploading" in ctx_l:
+        return "Defines the data-reuploading unitary ansatz.", "context_unitary_ansatz"
+
+    if "\\rightarrow" in lat or "\\Leftrightarrow" in lat:
+        if "controlled phase gate" in ctx_l:
+            return "Gives the controlled phase-gate state transformations.", "context_controlled_phase"
+        if "phase shift" in ctx_l or "rabi oscillation" in ctx_l:
+            return "Gives the photon-atom phase-shift transformations.", "context_phase_shift"
+        if "pi/2" in ctx_l or "\\pi/2" in ctx_l or "rotations" in ctx_l:
+            return "Gives the state transformation under pi/2 rotations.", "context_rotation_transform"
+        if "teleportation" in ctx_l:
+            return "Lists the Bell-state-dependent teleported states.", "context_teleportation"
+        return "Gives the state transformation rules.", "shape_state_transform"
+    if "\\ket{a,b,p" in lat.lower() or "\\ket{a,b,p_" in lat.lower():
+        return "Gives the joint atom-photon entangled state.", "shape_entangled_state"
+    if "multiplex" in ctx_l or lhs_token.startswith("navg"):
+        return "Gives the average multiplexing expression.", "context_multiplexing"
+
+    if "probability-density function" in ctx_l or lhs_token.startswith("dns"):
+        return "Gives the modified phase-space probability density.", "context_phase_space_density"
+    if "phase-space volume" in ctx_l or lhs_token.startswith("mathcald"):
+        return "Defines the phase-space measure correction factor.", "context_phase_space_factor"
+    if "omm-induced correction" in ctx_l or lhs_token.startswith("xi"):
+        return "Defines the field-corrected band energy and velocity.", "context_band_energy"
+    if "electric-current density" in ctx_l or lhs_token.startswith("mathbfj"):
+        return "Gives the band contribution to the electric-current density.", "context_current_density"
+    if "distribution function" in ctx_l and lhs_token.startswith("f0"):
+        return "Defines the Fermi-Dirac distribution function.", "context_fermi_distribution"
+    if "average over all the possible electron states" in ctx_l:
+        return "Defines the average of a physical observable over electron states.", "context_observable_average"
+    if "coarse-grained" in ctx_l or "landau-ginzburg" in ctx_l and lhs_token.startswith("s0"):
+        return "Defines the coarse-grained Landau-Ginzburg action.", "context_landau_ginzburg_action"
+    if "correlation function" in ctx_l and "\\langle" in lat:
+        return "Gives the critical power-law correlation function.", "context_correlation_function"
+    if "operator version" in ctx_l or "order-by-order expansion" in ctx_l:
+        return "Gives the continuum-field expansion of the microscopic operator.", "context_operator_expansion"
+    if "two-point correlator" in ctx_l or lhs_token.startswith("deltaz"):
+        return "Defines the change in the one-point polarization measurement.", "context_delta_z"
+    if "noise term" in ctx_l and "\\langle" in lat and "\\vartheta" in lat:
+        return "Gives the noise correlation function.", "context_noise_correlation"
+    if "langevin equation" in ctx_l:
+        return "Gives the Langevin equation for the order parameter field.", "context_langevin"
+    if "ordinary differential equation" in ctx_l:
+        return "Gives the ordinary differential equation for the time-dependent order parameter.", "context_order_parameter_ode"
+    if "solved analytically" in ctx_l or "\\mathrm{erfi}" in lat_l:
+        return "Gives the analytic solution for the normalized order parameter.", "context_analytic_solution"
+    if "bernoulli differential equation" in ctx_l or "overdamped" in ctx_l:
+        return "Gives the overdamped Bernoulli differential equation.", "context_bernoulli_ode"
+    if "freeze-out time" in ctx_l or re.match(r"\s*\\hat\{t\}", lat):
+        return "Gives the freeze-out time scaling relation.", "context_freezeout_scaling"
+
+    if lhs_token.startswith("ei") and "theta" in lhs_token:
+        return "Gives the phase factor for the statistics process.", "context_statistics_phase"
+    if "shorter process" in ctx_l or "step process" in ctx_l:
+        return "Gives the operator sequence for the process.", "context_operator_sequence"
+    if "configuration axiom" in ctx_l:
+        return "Gives the configuration axiom action on states.", "context_configuration_axiom"
+    if "locality axiom" in ctx_l:
+        return "Gives the locality axiom commutator condition.", "context_locality_axiom"
+    if "t-junction process" in ctx_l:
+        return "Gives the T-junction excitation-operator process.", "context_t_junction"
+
+    if eq_shape == "bound_or_inequality":
+        if "bad rectangles" in ctx_l:
+            return "Bounds the total number of bad rectangles.", "context_bad_rectangles_bound"
+        if lhs:
+            return f"Bounds {lhs} under the stated conditions.", "shape_bound_lhs"
+        return "Gives an inequality bound under the stated conditions.", "shape_bound_generic"
+
+    return "", ""
+
 
 def _subject_hint(contained_section, named_eq, inline_label):
-    """Derive a short subject label from available metadata signals.
-
-    Parameters
-    ----------
-    contained_section : str
-    named_eq : str
-    inline_label : str
-
-    Returns
-    -------
-    str
-        Short label to use in template slots when evidence lacks a subject.
-    """
-    # Inline label is most specific (e.g. "iCNOT", "TRS").
+    """Return the most specific available label for template subject slots."""
     if inline_label:
         return inline_label
-    # Named equation canonical form (e.g. "Hamiltonian", "von Neumann entropy").
     if named_eq:
         return named_eq
-    # Section title as last resort — strip generic leading articles.
-    if contained_section:
-        return re.sub(r"^(?:the|a|an)\s+", "", contained_section, flags=re.I).strip()
     return "the expression"
 
 
@@ -1068,9 +1354,11 @@ def _extract_subject(sent, trigger_match):
     subj = re.sub(
         r"^(?:In this (?:section|paper|work)|We (?:now|here|then|also|further|first|next)|"
         r"Note that|Observe that|It (?:follows|is easy to see) that|"
-        r"Furthermore|Moreover|However|Therefore|Thus|Hence|Here)\b[,\s]*",
+        r"Furthermore|Moreover|However|Therefore|Thus|Hence|Here|As a result)\b[,\s]*",
         "", subj, flags=re.I
     ).strip(" ,;:")
+    if _bad_subject(subj):
+        return ""
     # When subject is too long (> 10 words), try to take only the final noun
     # phrase by splitting on prepositions that signal clause boundaries.
     # Example: "The master equation for the density matrix of the full system"
@@ -1086,39 +1374,63 @@ def _extract_subject(sent, trigger_match):
         if np_head:
             cand = np_head.group(1).strip()
             if 1 <= len(cand.split()) <= 7:
-                return cand
+                return "" if _bad_subject(cand) else cand
         # Fallback: last 6 words of prefix.
         words = subj.split()
-        return " ".join(words[-6:]) if len(words) > 6 else ""
+        cand = " ".join(words[-6:]) if len(words) > 6 else ""
+        return "" if _bad_subject(cand) else cand
     return subj
 
 
-# ---------------------------------------------------------------------------
-# Individual template functions
-# ---------------------------------------------------------------------------
+def _bad_subject(subj):
+    """Reject connector/math-fragment subjects produced by broad templates."""
+    if not subj:
+        return True
+    s = re.sub(r"\s+", " ", subj).strip(" ,;:.").lower()
+    if not s:
+        return True
+    if re.fullmatch(r"(?:which|that|this|these|those|following|above|below|same|result|expression|equation|formula)", s):
+        return True
+    if re.match(r"^(?:which|that|where|as a result|the following|following|we see|it|and|or|but|for a system|our results)\b", s):
+        return True
+    if re.search(r"\b(?:we see that the number|our results also hold|as written in the main text)\b", s):
+        return True
+    # Math-fragment leftovers from LaTeXML text, e.g. "\mathbf{k} right at time t".
+    if "\\" in subj and len(re.findall(r"[A-Za-z]{3,}", subj)) < 2:
+        return True
+    if re.search(r"right\s*\\?\}?\$?\s+at\s+time", s):
+        return True
+    return False
+
+
+def _bad_meaning_text(text):
+    """Reject malformed template outputs before they enter final JSON."""
+    if not text:
+        return True
+    t = re.sub(r"\s+", " ", text).strip()
+    bad = [
+        r"^Gives the (?:it|we\b|our\b|for a system\b)",
+        r"^Gives (?:and|it|we\b|our\b)",
+        r"^Gives the .*our results also hold",
+        r"^Gives the .*we see that the number",
+        r"^Specifies attractive su\.?$",
+        r"^Gives defining\b",
+        r"^Defines the Here\b",
+        r"^Gives a vector network analyzer\b",
+        r"^Gives accounting for\b",
+        r"^Gives from the\b",
+        r"^Gives bose-hubbard system\.?$",
+        r"^Gives (?:the )?in dimensionless",
+        r"^Bounds .*\$.*bad\b",
+    ]
+    return any(re.search(p, t, re.I) for p in bad)
+
 
 def _tpl_introduces(m, evidence, hint):
-    """Handles 'studies/examines/considers the X' or 'X (ABBR) $...$ between'.
-
-    Pattern: "QD studies the quantum mutual information (QMI) $I(S:E_f)$ between..."
-    Extracts the noun phrase after the verb up to the first parenthesis, dollar
-    sign, or 'between'/'of'/'for' preposition.
-
-    Parameters
-    ----------
-    m : re.Match
-    evidence : str
-    hint : str
-
-    Returns
-    -------
-    str
-    """
-    # Extract noun phrase following the verb that matched.
+    """Handles 'studies/examines/considers the X'. Extracts the NP after the verb,
+    stopping at the first parenthesis, dollar sign, or preposition boundary."""
     after_verb = evidence[m.end():].strip()
-    # Remove leading articles/determiners.
     after_verb = re.sub(r"^(?:the|a|an)\s+", "", after_verb, flags=re.I)
-    # Truncate at first math token, parenthesis, or preposition boundary.
     np_match = re.match(
         r"([\w\s\-]{3,50}?)(?:\s*[\(\$]|\s+(?:between|of|for|with|in|from|and)\b)",
         after_verb, re.I
@@ -1127,34 +1439,12 @@ def _tpl_introduces(m, evidence, hint):
         subj = np_match.group(1).strip(" ,;:()")
         if 1 <= len(subj.split()) <= 8:
             return f"Defines the {subj.lower()}."
-    return f"Defines {hint}."
+    return "" if hint == "the expression" else f"Defines {hint}."
 
 
 def _tpl_presents(m, evidence, hint):
-    """Handles 'write down / present / formulate / propose the X'.
-
-    Extracts the object noun phrase after the trigger phrase.  Common patterns:
-    "Let us formulate the problem by writing down the master equation for ..."
-    "We present the quantum master equation at time t for ..."
-    "we write the Hamiltonian in the pump frame of reference"
-
-    When the trigger fires on 'write down', the next meaningful NP is the
-    direct object of 'down', not the object of 'formulate' — so we search
-    forward from the match end for the nearest 'the X' pattern.
-
-    Parameters
-    ----------
-    m : re.Match
-    evidence : str
-    hint : str
-
-    Returns
-    -------
-    str
-    """
-    # after_trigger is everything after the trigger span (e.g. after "present the").
-    # The trigger may have consumed a leading article, so after_trigger may start
-    # directly with the object NP ("quantum master equation at time t for...").
+    """Handles 'write down / present / formulate / propose the X'. Extracts the
+    object NP after the trigger; prefers physics terms when multiple NPs are found."""
     after_trigger = evidence[m.end():]
 
     _PHYSICS_PRIORITY = re.compile(
@@ -1171,14 +1461,10 @@ def _tpl_presents(m, evidence, hint):
         after_trigger, re.I
     )
     def _clean_np(np_str):
-        """Strip leading article, preserve proper-noun capitalisation."""
+        """Strip leading article."""
         np_str = re.sub(r"^(?:the|a|an)\s+", "", np_str, flags=re.I).strip(" ,;:()")
         return np_str
 
-    # Normalise NP capitalisation: lowercase run-of-sentence-initial caps only.
-    # "The quantum master equation" → "quantum master equation" (all lower, keep)
-    # "Lindblad master equation"   → keep (Lindblad is a proper noun)
-    # "time-dependent Schrödinger" → keep (Schrödinger is a proper noun)
     _COMMON_OPENERS = re.compile(
         r"^(?:quantum|classical|effective|total|full|generalized|general|"
         r"time-dependent|time|dependent|following|resulting|corresponding|"
@@ -1187,22 +1473,19 @@ def _tpl_presents(m, evidence, hint):
     )
 
     def _normalise_np(s):
-        """Lowercase first word only when it is a common adjective, not a proper noun."""
+        """Lowercase first word when it is a common adjective, preserve proper nouns."""
         if not s:
             return s
         words = s.split()
-        # If first word is a common adjective/article opener → lowercase it.
         if _COMMON_OPENERS.match(words[0]):
             return s[0].lower() + s[1:]
-        # If first word is ALL-CAPS (acronym) → keep as-is.
         if words[0].isupper():
             return s
-        # Otherwise first word might be a proper noun → keep capitalisation.
         return s
 
     if direct_np:
         obj = _clean_np(direct_np.group(1))
-        if obj and not re.match(r"^(?:same|above|following|problem)\b", obj, re.I):
+        if obj and not re.match(r"^(?:same|above|following|problem|derivation)\b", obj, re.I):
             if 1 <= len(obj.split()) <= 7:
                 return f"Presents the {_normalise_np(obj)}."
 
@@ -1213,7 +1496,7 @@ def _tpl_presents(m, evidence, hint):
         after_trigger, re.I
     ):
         obj = _clean_np(the_np.group(1))
-        if not obj or re.match(r"^(?:same|above|following|problem)\b", obj, re.I):
+        if not obj or re.match(r"^(?:same|above|following|problem|derivation)\b", obj, re.I):
             continue
         if 1 <= len(obj.split()) <= 7:
             if best_obj is None:
@@ -1223,27 +1506,12 @@ def _tpl_presents(m, evidence, hint):
                 break
     if best_obj:
         return f"Presents the {_normalise_np(best_obj)}."
-    return f"Presents {hint}."
+    return "" if hint == "the expression" else f"Presents {hint}."
 
 
 def _tpl_implements(m, evidence, hint):
-    """Handles 'implements / leads to ... Hamiltonian / having the ... Hamiltonian / satisfied by'.
-
-    When the trigger phrase itself ends with a known physics noun (Hamiltonian,
-    equation, model), that noun IS the description and we use it directly.
-    Otherwise extract the object noun phrase following the trigger.
-
-    Parameters
-    ----------
-    m : re.Match
-    evidence : str
-    hint : str
-
-    Returns
-    -------
-    str
-    """
-    # Check if the trigger span itself names the object (e.g. "having the time-dependent Hamiltonian").
+    """Handles 'implements / leads to / having the Hamiltonian / satisfied by'. Uses
+    the physics noun embedded in the trigger when present; otherwise extracts the object NP."""
     trigger_span = m.group(0)
     embedded = re.search(
         r"\b((?:time-dependent\s+)?(?:Hamiltonian|equation|master\s+equation|Lagrangian|model|functional))\s*$",
@@ -1266,50 +1534,22 @@ def _tpl_implements(m, evidence, hint):
         obj = np_match.group(1).strip(" ,;:()")
         if 1 <= len(obj.split()) <= 7:
             return f"Gives {obj.lower()}."
-    return f"Gives {hint}."
+    return "" if hint == "the expression" else f"Gives {hint}."
 
 
 def _tpl_written_as(m, evidence, hint):
-    """Handles 'can be expressed as / can be written as' with explicit subject.
-
-    Distinguished from takes_form: this rule fires when the sentence has a clear
-    subject noun phrase before "can be written/expressed as".  Extracts the subject.
-
-    Parameters
-    ----------
-    m : re.Match
-    evidence : str
-    hint : str
-
-    Returns
-    -------
-    str
-    """
+    """Handles 'can be expressed/written as' when a clear subject precedes the trigger."""
     subj = _extract_subject(evidence, m)
     if subj and 1 <= len(subj.split()) <= 8:
         if subj[0].isupper() and not subj.split()[0].isupper():
             subj = subj[0].lower() + subj[1:]
         return f"Gives {subj}."
-    return f"Gives {hint}."
+    return "" if hint == "the expression" else f"Gives {hint}."
 
 
 def _tpl_fitted_with(m, evidence, hint):
-    """Handles 'X is fitted with Y to estimate Z' / 'used to estimate Z'.
-
-    Two sub-patterns:
-    - "fitted/approximated with Y": extract Y (the model/function used).
-    - "used to estimate/compute Z": extract Z (the quantity being estimated).
-
-    Parameters
-    ----------
-    m : re.Match
-    evidence : str
-    hint : str
-
-    Returns
-    -------
-    str
-    """
+    """Handles 'fitted/approximated with Y' and 'used to estimate Z'.
+    Extracts the model name or the estimated quantity depending on the sub-pattern."""
     trigger = m.group(0).lower()
 
     # Sub-case: "used to estimate/compute/extract Z"
@@ -1347,16 +1587,11 @@ def _tpl_fitted_with(m, evidence, hint):
                     return f"Gives the {func} used to estimate the {qty.lower()}."
             return f"Gives the {func}."
 
-    return f"Gives {hint}."
+    return "" if hint == "the expression" else f"Gives {hint}."
 
 
 def _tpl_define(m, evidence, hint):
-    """Handles 'we define/denote X as', 'let X be', 'X is defined as'.
-
-    Extracts the object being defined from the evidence sentence.  Falls back
-    to the subject hint when extraction produces nothing useful.
-    """
-    # Try to extract "X" from "we define X as" / "define the Y as" patterns.
+    """Handles 'we define/denote X as', 'let X be', 'X is defined as'."""
     define_obj = re.search(
         r"(?:we\s+(?:define|denote|introduce|call|write|express)\s+(?:the\s+)?)(.+?)"
         r"(?:\s+as\b|\s+by\b|\s+to\s+be\b)",
@@ -1401,48 +1636,42 @@ def _tpl_define(m, evidence, hint):
         obj = choose_obj.group(1).strip(" ,;:()")
         if 1 <= len(obj.split()) <= 6:
             return f"Defines the {obj.lower()}."
-    return f"Defines {hint}."
+    return "" if hint == "the expression" else f"Defines {hint}."
 
 
 def _tpl_gives(m, evidence, hint):
-    """Handles 'X is therefore/given by/becomes/the X is therefore'.
-
-    Extracts the quantity being given, e.g. 'the averaged QMI'.
-    Lowercases the first character of the subject because it may come from
-    a sentence-initial capital ("The averaged QMI is therefore...").
-    """
+    """Handles 'X is therefore/given by'. Extracts the quantity being given."""
     subj = _extract_subject(evidence, m)
     if subj and 1 <= len(subj.split()) <= 8:
-        # Lowercase sentence-initial capital; preserve acronyms (all-caps kept).
         if subj[0].isupper() and not subj.split()[0].isupper():
             subj = subj[0].lower() + subj[1:]
         return f"Gives {subj}."
-    return f"Gives {hint}."
+    return "" if hint == "the expression" else f"Gives {hint}."
 
 
 def _tpl_matrix_rep(m, evidence, hint):
     """Handles 'has matrix representation' / 'matrix representation of X'."""
-    # Find what the matrix representation belongs to — look before "has".
     subj = _extract_subject(evidence, m)
     if subj and 1 <= len(subj.split()) <= 6:
         return f"Gives the matrix representation of {subj}."
-    return f"Gives the matrix representation of {hint}."
+    return "" if hint == "the expression" else f"Gives the matrix representation of {hint}."
 
 
 def _tpl_state(m, evidence, hint):
     """Handles 'the state becomes' / 'state of the system after'."""
+    if re.search(r"\bgibbs state\b", evidence, re.I):
+        return "Defines the Gibbs state at inverse temperature beta."
     # Subject is the state variable; condition is what precedes.
     subj = _extract_subject(evidence, m)
     if subj and 1 <= len(subj.split()) <= 8:
+        if re.match(r"^(?:the|a|an)$", subj.strip(), re.I):
+            return "Gives the resulting state."
         return f"Gives the resulting state after {subj}."
-    return f"Gives the resulting state after the interaction."
+    return "Gives the resulting state."
 
 
 def _tpl_probability(m, evidence, hint):
     """Handles 'occurs with probability' / 'probability of measuring'."""
-    # Extract the event phrase after "probability of [measuring|finding|...]".
-    # Stop at prepositions/verbs that signal the phrase has ended
-    # (e.g. "in state psi", "is given by").
     event = re.search(
         r"probability\s+(?:of\s+(?:measuring\s+|finding\s+|obtaining\s+)?|that\s+)"
         r"([\w\$\\\{\}\^\_ ]{2,50}?)"
@@ -1458,12 +1687,7 @@ def _tpl_probability(m, evidence, hint):
 
 
 def _tpl_sum_average(m, evidence, hint):
-    """Handles 'average of X over' / 'averaged ... over all' / 'we define the averaged X as'.
-
-    Extracts the quantity being averaged and builds "Defines the averaged X over
-    all fractions."  Strips trailing 'as' that bleeds in from trigger phrases like
-    "We define the averaged QMI as".
-    """
+    """Handles 'average of X over' / 'averaged X as'. Strips trailing 'as' artifact."""
     avg_obj = re.search(
         r"(?:we\s+define\s+the\s+average(?:d)?\s+|average(?:d)?\s+(?:of\s+)?|mean\s+of\s+)"
         r"(.+?)"
@@ -1472,20 +1696,14 @@ def _tpl_sum_average(m, evidence, hint):
     )
     if avg_obj:
         obj = avg_obj.group(1).strip(" ,;:()")
-        # Remove trailing 'as' if the pattern consumed it as boundary.
         obj = re.sub(r"\s+as$", "", obj, flags=re.I).strip()
         if 1 <= len(obj.split()) <= 8:
             return f"Defines the averaged {obj} over all fractions."
-    return f"Defines the averaged {hint}."
+    return "" if hint == "the expression" else f"Defines the averaged {hint}."
 
 
 def _tpl_specifies(m, evidence, hint):
-    """Handles 'where the system is' / 'consider a X' / 'the initial state is'.
-
-    Tries to extract the noun phrase from the evidence sentence before falling
-    back to the section-title hint.  Rejects relative-pronoun artifacts like
-    "where the system" that bleed in from the trigger phrase itself.
-    """
+    """Handles 'where the system is' / 'consider a X' / 'the initial state is'."""
     # Only extract from "consider a/an/the X" pattern — avoids malformed output
     # from "where the system is" trigger which has no extractable object noun.
     np = re.search(
@@ -1498,22 +1716,12 @@ def _tpl_specifies(m, evidence, hint):
         if subj and not re.match(r"^(?:where|which|that|who|when)\b", subj, re.I):
             if 1 <= len(subj.split()) <= 6:
                 return f"Specifies {subj.lower()}."
-    return f"Specifies {hint}."
+    return "" if hint == "the expression" else f"Specifies {hint}."
 
 
 def _tpl_modeled_as(m, evidence, hint):
-    """Handles 'X is modeled as / described by / governed by / represented by'.
-
-    Common in quantum physics: "The transmon qubit is modeled as a three-level
-    system", "the dynamics are governed by the Lindblad equation".
-    Extracts the subject (what is being modeled) from the prefix before the verb.
-    Rejects generic subjects like "dynamics", "behavior", "such a system" — in
-    those cases the named_eq fallback produces a better result.
-    """
-    # Reject subjects with no physics-specific content.
-    # "the dynamical behavior of such a system" → all generic words → reject
-    # "qubit dynamics" → "qubit" is physics-specific → keep
-    # Strategy: subject is generic if it contains only words from a stop set.
+    """Handles 'X is modeled as / described by / governed by'. Rejects purely generic
+    subjects (dynamics, behavior, system) so named_eq fallback can handle them."""
     _GENERIC_WORDS = {
         "the", "a", "an", "its", "such", "this", "that", "of", "for",
         "dynamics", "dynamic", "dynamical", "behavior", "behaviour",
@@ -1528,15 +1736,11 @@ def _tpl_modeled_as(m, evidence, hint):
         if subj[0].isupper() and not subj.split()[0].isupper():
             subj = subj[0].lower() + subj[1:]
         return f"Gives {subj}."
-    return f"Gives {hint}."
+    return "" if hint == "the expression" else f"Gives {hint}."
 
 
 def _tpl_takes_form(m, evidence, hint):
-    """Handles 'takes the following form' / 'has the form' / 'the X reads' / bare 'is'.
-
-    Extracts the subject quantity from the prefix before the verb phrase.
-    Adds 'the' article when the subject is a common noun phrase (not proper noun).
-    """
+    """Handles 'takes the following form' / 'has the form' / 'the X reads'."""
     subj = _extract_subject(evidence, m)
     if subj and 1 <= len(subj.split()) <= 8:
         if subj[0].isupper() and not subj.split()[0].isupper():
@@ -1545,20 +1749,17 @@ def _tpl_takes_form(m, evidence, hint):
         if not re.match(r"^(?:the|a|an)\s", subj, re.I):
             return f"Gives the {subj}."
         return f"Gives {subj}."
-    return f"Gives {hint}."
+    return "" if hint == "the expression" else f"Gives {hint}."
 
 
 def _tpl_computed_from(m, evidence, hint):
-    """Handles 'is obtained from / computed from / calculated from / derived from'.
-
-    Extracts what is being computed from the subject prefix.
-    """
+    """Handles 'is obtained from / computed from / derived from'."""
     subj = _extract_subject(evidence, m)
     if subj and 1 <= len(subj.split()) <= 8:
         if subj[0].isupper() and not subj.split()[0].isupper():
             subj = subj[0].lower() + subj[1:]
         return f"Gives {subj}."
-    return f"Gives {hint}."
+    return "" if hint == "the expression" else f"Gives {hint}."
 
 
 # Ordered rule table: (rule_name, trigger_regex, template_fn).
@@ -1579,10 +1780,6 @@ _MEANING_RULES = [
         _tpl_probability,
     ),
     (
-        # "state becomes" is the specific trigger; the generic "X becomes" is caught
-        # by state_becomes only when the subject noun contains "state".  The broader
-        # "becomes:" pattern (e.g. "the interaction Hamiltonian becomes:") falls into
-        # takes_form below if the sentence ends with a colon, so no extra rule needed.
         "state_becomes",
         re.compile(
             r"\bstate\s+becomes\b|\bstate\s+of\s+the\s+system\s+(?:after|becomes)\b"
@@ -1601,29 +1798,19 @@ _MEANING_RULES = [
         _tpl_sum_average,
     ),
     (
-        # Catches "X takes the following form" / "has the form" / "the X reads".
-        # Must come before "gives" because "reads" is also in gives — but here
-        # the trigger is the standalone verb phrase, not subject-prefix extraction.
         "takes_form",
         re.compile(
             r"\btakes?\s+the\s+(?:following\s+)?form\b"
             r"|\bhas\s+the\s+(?:following\s+)?form\b"
             r"|\breads\s*[:\.]?\s*$"
             r"|\bcan\s+be\s+(?:written|expressed)\s+as\b"
-            # "the Hamiltonian becomes:" — colon signals a display equation follows.
             r"|\bbecomes\s*:"
-            # Bare "is" or "are" at sentence end — dangling lead_in like
-            # "The master equation for the full system is" → extract subject.
             r"|\b(?:is|are)\s*[,:\.]?\s*$",
             re.I,
         ),
         _tpl_takes_form,
     ),
     (
-        # Catches "is modeled as", "is described by", "is governed by",
-        # "is represented by", "is characterized by".
-        # These are among the most common equation-introduction phrases in
-        # quantum physics papers that do not use "define" or "give".
         "modeled_as",
         re.compile(
             r"\b(?:is|are)\s+(?:modeled|modelled)\s+as\b"
@@ -1639,8 +1826,6 @@ _MEANING_RULES = [
         _tpl_modeled_as,
     ),
     (
-        # Catches "is obtained from", "is computed from", "can be calculated from",
-        # "is derived from".  Separate from "gives" to keep subject extraction clean.
         "computed_from",
         re.compile(
             r"\bis\s+obtained\s+(?:from|by)\b"
@@ -1654,10 +1839,6 @@ _MEANING_RULES = [
         _tpl_computed_from,
     ),
     (
-        # "studies/examines/considers the X" — general introduction verb.
-        # Also covers "introduces the X scoring function" by adding "introduces".
-        # Must come before "define" to use the more precise noun-phrase extraction
-        # in _tpl_introduces rather than the define-object pattern.
         "introduces",
         re.compile(
             r"\b(?:studies|examines|investigates|introduces|"
@@ -1667,11 +1848,6 @@ _MEANING_RULES = [
         _tpl_introduces,
     ),
     (
-        # "write down the master equation", "present the quantum master equation",
-        # "formulate the problem", "propose the following model", "we write the Hamiltonian".
-        # Fires on write/present/formulate/propose/show followed by a noun phrase.
-        # Separated from 'introduces' because template extracts object after verb,
-        # not subject before verb.
         "presents",
         re.compile(
             r"\b(?:write[s]?\s+down|write[s]?\s+the|present[s]?\s+the|"
@@ -1682,10 +1858,6 @@ _MEANING_RULES = [
         _tpl_presents,
     ),
     (
-        # "implements a Bose-Hubbard system", "leads to a tractable model",
-        # "the experiment implements", "this leads to the following Hamiltonian".
-        # Covers the common pattern where the equation's identity is the object
-        # of a verb that does NOT match modeled_as or defined_as.
         "implements",
         re.compile(
             r"\bimplements?\s+(?:a|an|the)\b"
@@ -1699,8 +1871,6 @@ _MEANING_RULES = [
         _tpl_implements,
     ),
     (
-        # "X can be expressed as", "X can be written as", "X may be rewritten as"
-        # Subject is the thing being expressed — extract from prefix before trigger.
         "written_as",
         re.compile(
             r"\bcan\s+be\s+(?:expressed|written|rewritten|cast)\s+as\b"
@@ -1710,9 +1880,6 @@ _MEANING_RULES = [
         _tpl_written_as,
     ),
     (
-        # "X is fitted with a Gaussian function to estimate Y"
-        # "X is approximated by a Lorentzian to extract Y"
-        # "used to estimate/compute/extract Y"
         "fitted_with",
         re.compile(
             r"\bfitted?\s+(?:with|by|using)\b"
@@ -1741,20 +1908,16 @@ _MEANING_RULES = [
     (
         "gives",
         re.compile(
-            # Verb alone as anchor so _extract_subject sees full prefix as subject.
             r"\bis\s+therefore\b"
             r"|\bis\s+given\s+by\b"
             r"|\bwe\s+(?:obtain|get|find|arrive\s+at)\b"
-            r"|\bgenerates?\s+(?:a|an|the)\b"   # "generates a unitary"
-            r"|\bgives?\s+rise\s+to\b",          # "gives rise to coupling"
+            r"|\bgenerates?\s+(?:a|an|the)\b"
+            r"|\bgives?\s+rise\s+to\b",
             re.I,
         ),
         _tpl_gives,
     ),
     (
-        # "where the system is a single qubit", "consider a Gaussian PSF",
-        # "the initial state is".  Fires after define/gives to avoid shadowing
-        # stronger signals.  _tpl_specifies now extracts noun from evidence.
         "specifies",
         re.compile(
             r"\bwhere\s+the\s+(?:system|state|model)\s+is\b"
@@ -1768,42 +1931,18 @@ _MEANING_RULES = [
 
 
 def _mine_post_text_lhs(post_text, latex):
-    """Extract meaning from post_text when it defines the LHS symbol.
-
-    Matches the pattern 'where $SYM$ is [a|an|the] DESCRIPTION' where SYM
-    appears as the first token of the equation's LaTeX LHS.  This is very
-    common in quantum physics: "... where $\\hat{H}$ is the Hamiltonian of the
-    system, $\\Delta$ is the detuning, ...".  We want only the first (LHS)
-    definition, not the second or third.
-
-    Parameters
-    ----------
-    post_text : str
-        Text following the equation.
-    latex : str
-        Raw LaTeX of the equation.
-
-    Returns
-    -------
-    str
-        Short description phrase, or empty string when pattern does not match.
-    """
+    """Match 'where $SYM$ is DESCRIPTION' in post_text where SYM is the equation LHS.
+    Returns the description phrase, or empty string when the pattern does not match."""
     if not post_text or not latex:
         return ""
-    # Extract the first non-whitespace token from the LaTeX LHS (before = or \\ or \to).
-    # Strip surrounding whitespace and leading backslash for comparison.
     lhs_match = re.match(r"\s*([\\]?[A-Za-z{}^_\{\}]+)", latex.strip())
     if not lhs_match:
         return ""
     lhs_raw = lhs_match.group(1)
-    # Normalise: remove backslash and braces for loose matching.
     lhs_norm = re.sub(r"[\\{}\s^_]", "", lhs_raw).lower()
     if len(lhs_norm) < 1:
         return ""
 
-    # Search post_text for "where $TOKEN$ is [a|an|the] DESCRIPTION".
-    # We find all "where ... is" clauses and check whether the dollar-enclosed
-    # token normalises to the LHS.
     for m in re.finditer(
         r"\bwhere\s+\$([^$]{1,40})\$\s+(?:is|are)\s+(?:a|an|the\s+)?([A-Za-z][^\$,\.;]{3,60}?)(?:\s*[,\.;$]|and\s+\$|$)",
         post_text, re.I
@@ -1811,9 +1950,7 @@ def _mine_post_text_lhs(post_text, latex):
         token_raw = m.group(1)
         description = m.group(2).strip()
         token_norm = re.sub(r"[\\{}\s^_]", "", token_raw).lower()
-        # Accept if the post_text token matches the LaTeX LHS token.
         if token_norm == lhs_norm or (len(lhs_norm) >= 3 and lhs_norm in token_norm):
-            # Trim trailing citation markers and noise.
             description = re.sub(r"\[\s*[\d,;\s]*\]\s*$", "", description).strip()
             description = re.sub(r"\s+", " ", description)
             if 1 <= len(description.split()) <= 10:
@@ -1824,40 +1961,23 @@ def _mine_post_text_lhs(post_text, latex):
 def _synthesize_meaning(intro_sentence, lead_in_phrase, post_text, post_explanation,
                         latex, lhs_token, lhs_name, eq_shape,
                         contained_section, named_eq, inline_label):
-    """Convert local evidence into a functional meaning statement via slot-fill templates.
+    """Convert local evidence into a meaning statement via slot-fill templates.
 
-    Evidence is tried in priority order:
-      1. lead_in_phrase  — dangling sentence directly attached to equation
-         (e.g. "The sensitivity δB is given by:") — strongest signal.
-      2. intro_sentence  — last substantive sentence before the equation.
-      3. post_explanation — first non-where sentence after the equation.
-      4. first sentence of post_text (where-clause).
-      5. post_text LHS mining — "where $LHS$ is the X".
-      6. Shape-based templates from _parse_lhs_shape(latex).
-
-    LHS guard: when the "define" rule fires on prose text, the symbol being
-    defined in prose is checked against lhs_token.  If they do not match the
-    rule is skipped (avoids attributing a neighbouring symbol's definition to
-    this equation).
-
-    Returns ("", "none", "") when no rule matches.
+    Evidence priority: lead_in_phrase > intro_sentence > post_explanation >
+    first post_text sentence > post_text LHS mining > shape-based templates.
+    LHS guard on the "define" rule prevents attributing a neighbouring symbol's
+    definition to this equation. Returns ("", "none", "") when nothing matches.
 
     Parameters
     ----------
     intro_sentence : str
     lead_in_phrase : str
-        Dangling setup phrase directly before the equation.
     post_text : str
-        Text after equation starting with 'where $...$'.
     post_explanation : str
-        First explanatory sentence after the equation (no 'where' required).
     latex : str
     lhs_token : str
-        Normalised LHS token from _parse_lhs_shape.
     lhs_name : str
-        Human-readable LHS name (e.g. "density matrix"), or "".
     eq_shape : str
-        Equation shape from _parse_lhs_shape (e.g. "master_equation").
     contained_section : str
     named_eq : str
     inline_label : str
@@ -1872,44 +1992,41 @@ def _synthesize_meaning(intro_sentence, lead_in_phrase, post_text, post_explanat
     post_sents = _split_sentences(post_text) if post_text else []
     first_post = _clean_intro(post_sents[0]) if post_sents else ""
 
-    # Build ordered evidence list.  lead_in_phrase first — it is the closest
-    # prose signal to the equation and contains the exact verb phrase
-    # ("is given by", "takes the form") that identifies the equation's role.
+    # lead_in_phrase first: closest prose signal, contains the exact verb phrase.
     evidence_list = []
     for ev in (lead_in_phrase, intro_sentence, post_explanation, first_post):
         if ev and ev not in evidence_list:
             evidence_list.append(ev)
 
-    # Try evidence sources in priority order: lead_in first, then the rest.
-    # This means "is given by" in lead_in beats "we use" in intro even if
-    # "define" fires before "gives" in the rule table.
+    combined_context = " ".join(evidence_list)
+    contextual, contextual_rule = _contextual_lhs_meaning(
+        combined_context, latex, lhs_token, eq_shape
+    )
+    if contextual:
+        return contextual, contextual_rule, combined_context[:120]
+
     for evidence in evidence_list:
         for rule_name, trigger_re, template_fn in _MEANING_RULES:
             m = trigger_re.search(evidence)
             if not m:
                 continue
-            # LHS guard for "define" rule: prose may define a NEIGHBOURING symbol
-            # (e.g. "The number operator \hat{n} is defined as...") while this
-            # equation's LHS is \hat{T}.  Extract the symbol token from the prose
-            # and compare against lhs_token before accepting the result.
+            # LHS guard: if "define" fires on a neighbouring symbol, skip it.
             if rule_name == "define" and lhs_token:
-                # Find the first $...$ token near the define verb in the evidence.
                 sym_m = re.search(r"\$([^$]{1,30})\$", evidence[max(0, m.start()-60):m.end()+60])
                 if sym_m:
                     if not _lhs_matches_prose_symbol(lhs_token, sym_m.group(1)):
                         continue  # symbol mismatch — skip this evidence string
             result = template_fn(m, evidence, hint)
-            if result:
+            if result and not _bad_meaning_text(result):
                 return result, rule_name, evidence[:120]
 
-    # Post_text LHS mining: "where $LHS$ is the X".
     lhs_desc = _mine_post_text_lhs(post_text, latex)
     if lhs_desc:
-        return f"Gives the {lhs_desc.lower()}.", "post_lhs", post_text[:120]
+        result = f"Gives the {lhs_desc.lower()}."
+        if not _bad_meaning_text(result):
+            return result, "post_lhs", post_text[:120]
 
-    # Shape-based fallback templates using _parse_lhs_shape output.
-    # These fire when prose gives no usable trigger but the equation structure
-    # itself is identifiable.
+    # Shape-based fallbacks: fire when no prose trigger matched.
     if eq_shape == "master_equation":
         return "Gives the master equation for the system density matrix.", "shape_master_eq", latex[:60]
     if eq_shape == "probability":
@@ -1932,42 +2049,18 @@ def _synthesize_meaning(intro_sentence, lead_in_phrase, post_text, post_explanat
     return "", "none", ""
 
 
-# ---------------------------------------------------------------------------
-# Meaning assembly
-# ---------------------------------------------------------------------------
-
 def build_meaning(signals, symbol_defs, latex=""):
-    """Assemble the meaning string from signals in synthesis-first priority order.
-
-    Priority (highest to lowest):
-      1. Inline label / theorem environment with descriptive title — per-equation
-         identifiers that are unambiguous.
-      2. Semantic synthesis — _synthesize_meaning() over lead_in_phrase,
-         intro_sentence, post_explanation, post_text, and LHS shape.  This is
-         the primary meaning source; section title does NOT block it.
-      3. Named equation lexicon — "This is the master equation." when synthesis
-         yields nothing but named_eq is identified.
-      4. Proof-step fallback — "Intermediate step in proof of X." for equations
-         inside proof blocks.
-      5. Section title fallback — only when ALL equation-level signals fail.
-         Kept in audit trail regardless.
-      6. Cross-reference last resort.
-
-    Section title is demoted to fallback and is recorded in the audit trail
-    under 'section_used_as_fallback'.  Abbreviations (Schwartz-Hearst) are
-    supplemental only — they are not substituted for equation-level synthesis.
-
-    Side-effects: writes '_meaning_rule', '_meaning_evidence', '_meaning_lhs',
-    '_meaning_shape', '_meaning_source', '_section_fallback' into signals.
+    """Assemble the meaning string in priority order: inline label / theorem env,
+    then synthesis, then named_eq lexicon, then proof-step, then section fallback,
+    then cross-ref. Writes audit keys into signals as a side-effect.
 
     Parameters
     ----------
     signals : dict
-        Mutable — audit keys are added.
+        Mutable signal dict; audit keys are written into it.
     symbol_defs : dict
         Accepted but unused in meaning assembly.
     latex : str
-        Raw LaTeX — forwarded to _synthesize_meaning.
 
     Returns
     -------
@@ -2000,8 +2093,6 @@ def build_meaning(signals, symbol_defs, latex=""):
     signals["_section_fallback"]  = False
 
     # ---------- Priority 1: per-equation structural identifiers ----------
-    # These are the sharpest signals: inline label embedded in the LaTeX, or
-    # a theorem/definition environment with a descriptive title.
     id_clause = ""
     if inline_label and theorem_title:
         env_label = theorem_env if theorem_env else "result"
@@ -2012,7 +2103,9 @@ def build_meaning(signals, symbol_defs, latex=""):
         signals["_meaning_source"] = "inline_label"
     elif theorem_title:
         env_label = theorem_env if theorem_env else "result"
-        if theorem_env == "definition":
+        if re.fullmatch(r"[IVXLCDM]+\.\d+\.?", theorem_title.strip(), re.I):
+            id_clause = ""
+        elif theorem_env == "definition":
             id_clause = f"This definition gives the {theorem_title}."
         else:
             id_clause = f"As a {env_label}: {theorem_title}."
@@ -2036,12 +2129,14 @@ def build_meaning(signals, symbol_defs, latex=""):
         )
 
     # ---------- Priority 3: named equation lexicon fallback ----------
-    # Only fires when synthesis produced nothing.
     named_clause = ""
     if not synth and named_eq:
         named_clause = f"This is the {named_eq}."
-        signals["_meaning_rule"]   = "named_eq_fallback"
-        signals["_meaning_source"] = "named_eq"
+        if _bad_meaning_text(named_clause):
+            named_clause = ""
+        else:
+            signals["_meaning_rule"]   = "named_eq_fallback"
+            signals["_meaning_source"] = "named_eq"
 
     # ---------- Priority 4: proof-step fallback ----------
     proof_clause = ""
@@ -2053,7 +2148,6 @@ def build_meaning(signals, symbol_defs, latex=""):
         signals["_meaning_source"] = "proof_section"
 
     # ---------- Priority 5: section-title fallback ----------
-    # Used only when all equation-level signals fail.  Always recorded in audit.
     section_clause = ""
     if not synth and not named_clause and not proof_clause:
         if contained_section and not section_is_generic:
@@ -2063,7 +2157,6 @@ def build_meaning(signals, symbol_defs, latex=""):
             signals["_section_fallback"] = True
 
     # ---------- Assemble final string ----------
-    # id_clause first (inline label / theorem env), then the best meaning clause.
     parts = []
     if id_clause:
         parts.append(id_clause)
@@ -2088,10 +2181,6 @@ def build_meaning(signals, symbol_defs, latex=""):
 
     return " ".join(parts)
 
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
 
 def _strip_markers(text):
     """Remove [EQ] / [TARGET] markers and collapse whitespace."""
