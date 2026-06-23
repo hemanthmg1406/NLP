@@ -19,7 +19,7 @@ import re
 from copy import deepcopy
 
 from abbreviations import schwartz_hearst
-from context_extract import (
+from context import (
     _enclosing_para,
     _prev_paras,
     _next_paras,
@@ -534,7 +534,7 @@ def extract_abbreviation(pre_text):
     if not pre_text or len(pre_text.split()) < _MIN_PRE_WORDS:
         return ""
     # Narrow to the 2 sentences immediately before the equation.
-    from context_extract import _split_sentences
+    from context import _split_sentences
     sents = _split_sentences(pre_text)
     narrow = " ".join(sents[-2:]) if len(sents) >= 2 else pre_text
     if len(narrow.split()) < _MIN_PRE_WORDS:

@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 # Import the processing function directly — main() is intentionally skipped.
-from build_json import process_paper, OUTPUT_FILE
+from pipeline import process_paper, OUTPUT_FILE
 
 TEST_PAPERS = [
     "2409.02921",

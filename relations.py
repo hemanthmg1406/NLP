@@ -25,7 +25,7 @@ from collections import Counter
 import numpy as np
 import spacy
 
-from context_extract import _split_sentences
+from context import _split_sentences
 from mathml_tree import mathml_to_tree, tree_edit_distance
 
 # TF-IDF cosines are naturally smaller than neural cosines (sparse vectors, no

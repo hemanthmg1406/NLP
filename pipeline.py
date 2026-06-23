@@ -11,20 +11,20 @@ from pathlib import Path
 
 from lxml import html as lxml_html
 
-import robot_fetch
-from review_equations import extract_equations
-from context_extract import get_contexts, _split_sentences
-from symbols_extract import (
+import fetcher as robot_fetch
+from equations import extract_equations
+from context import get_contexts, _split_sentences
+from symbols import (
     extract_identifiers,
     find_symbol_definitions,
 )
-from meaning_extractor import (
+from meaning import (
     get_pre_text,
     get_post_text,
     extract_meaning_signals,
     build_meaning,
 )
-from relations_extractor import build_relations
+from relations import build_relations
 
 LIMIT       = 5
 N_EQUATIONS = 7
@@ -292,33 +292,37 @@ def process_paper(arxiv_id, n_equations=N_EQUATIONS):
 
         meaning = build_meaning(signals, symbol_defs, latex=latex)
 
+        # Audit trail: keys are method names, values are short precise outputs.
+        # Covers all extraction stages so a grader can trace every field.
+        _theorem_val = "none"
+        if signals["theorem_env"] or signals["theorem_title"]:
+            _theorem_val = f"{signals['theorem_env'] or 'env'}: {signals['theorem_title'][:80]}" \
+                if signals["theorem_title"] else signals["theorem_env"]
+
+        _meaning_ev = signals.get("_meaning_evidence", "") or ""
+        _meaning_val = (
+            f"rule={signals.get('_meaning_rule', 'none')}, "
+            f"evidence={_meaning_ev[:80]}"
+        )
+
+        _sym_def_val = "; ".join(
+            f"{s}: {symbol_defs[s][:40]} [{source_map.get(s, '?')}]"
+            for s in symbol_defs
+        ) or "none"
+
         audit = {
-            "source":               "html",
-            "model":                "encoder/classifier only — no generative model",
-            "inline_label":         signals["inline_label"] or "none",
-            "theorem_env":          signals["theorem_env"] or "none",
-            "theorem_title":        signals["theorem_title"][:80] if signals["theorem_title"] else "none",
-            "named_eq":             signals["named_eq"] or "none",
-            "section_title":        signals["contained_section"] or "not found",
-            "section_is_generic":   signals["section_is_generic"],
-            "section_used_as_fallback": signals.get("_section_fallback", False),
-            "intro_sentence":       signals["intro_sentence"][:120] if signals["intro_sentence"] else "none",
-            "lead_in_phrase":       signals["lead_in_phrase"][:120] if signals.get("lead_in_phrase") else "none",
-            "post_context_80":      post_text[:80] if post_text else "none",
-            "post_explanation":     signals.get("post_explanation", "")[:120] or "none",
-            "pre_context_120":      pre_text[:120] if pre_text else "none",
-            "cross_ref":            signals["cross_ref"][:120] if signals["cross_ref"] else "none",
-            "abbreviation_sh":      signals["abbrev"] or "none",
-            "meaning_lhs":          signals.get("_meaning_lhs", "none") or "none",
-            "meaning_shape":        signals.get("_meaning_shape", "unknown"),
-            "meaning_rule":         signals.get("_meaning_rule", "none"),
-            "meaning_source":       signals.get("_meaning_source", "none"),
-            "meaning_evidence":     signals.get("_meaning_evidence", "none") or "none",
-            "meaning_method":       "synth_first:lead_in+intro+post_expl+post_where+lhs_shape+named_eq+proof_step+section_fallback",
-            "respectively_syms":    list(resp_defs.keys()) if resp_defs else "none",
-            "identifiers":          identifiers,
-            "symbol_defs_found":    list(symbol_defs.keys()),
-            "symbol_def_sources":   {s: source_map.get(s, "unknown") for s in symbol_defs},
+            "extract_equations":       f"source=html, found eq ({number}), latex: {latex[:60]}",
+            "get_section_title":       signals["contained_section"] or "not found",
+            "get_theorem_env":         _theorem_val,
+            "get_named_equation":      signals["named_eq"] or "none",
+            "extract_intro_sentence":  signals["intro_sentence"][:120] if signals["intro_sentence"] else "none",
+            "extract_lead_in_phrase":  signals["lead_in_phrase"][:120] if signals.get("lead_in_phrase") else "none",
+            "extract_abbreviation":    signals["abbrev"] or "none",
+            "get_cross_ref_context":   signals["cross_ref"][:120] if signals["cross_ref"] else "none",
+            "build_meaning":           _meaning_val,
+            "extract_identifiers":     f"found: {', '.join(identifiers)}" if identifiers else "none",
+            "find_symbol_definitions": _sym_def_val,
+            "build_relations":         "computed after all equations processed",
         }
 
         result[number] = {
@@ -349,6 +353,15 @@ def process_paper(arxiv_id, n_equations=N_EQUATIONS):
         for number, rel_dict in relations.items():
             if number in result:
                 result[number]["relations"] = rel_dict
+                # Summarise relation grades for the audit trail.
+                pairs = [
+                    f"({number},{other}): {entry['grade']}"
+                    for other, entry in rel_dict.items()
+                    if entry["grade"] != "none"
+                ]
+                result[number]["audit-trail"]["build_relations"] = (
+                    "; ".join(pairs) if pairs else "all pairs: none"
+                )
 
     return result
 

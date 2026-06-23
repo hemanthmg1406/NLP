@@ -21,8 +21,8 @@ from pylatexenc.latexwalker import (LatexWalker, LatexMacroNode,
                                      LatexCharsNode, LatexGroupNode,
                                      LatexEnvironmentNode)
 
-from context_extract import get_contexts, _split_sentences
-from review_equations import extract_equations
+from context import get_contexts, _split_sentences
+from equations import extract_equations
 
 CACHE_DIR = Path("cache")
 
