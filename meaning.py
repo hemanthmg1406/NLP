@@ -2,9 +2,8 @@
 
 Signal extraction priority:
   1. Theorem/Lemma/Definition environment title with a descriptive name.
-  2. Section title (when not generic) — primary context clause.
-     Named equation lexicon fires as a supplement when the section is specific,
-     or as the primary clause when the section is generic/missing.
+  2. Section title (when not generic) — only a last-resort context clause.
+     Named-equation detection is kept for audit/hints, not as a meaning source.
   3. Schwartz-Hearst abbreviation — purpose clause.
   4. Introducing sentence — last substantive non-dangling sentence from pre-text,
      verbatim from the paper (no generation).
@@ -458,7 +457,7 @@ def get_pre_text(table):
     p = deepcopy(para)
     for child in list(p)[idx:]:
         p.remove(child)
-    text = _strip_markers(_clean_para(p, set()))
+    text = _nearest_pre_segment(_clean_para(p, set()))
     if len(text.split()) < _MIN_PRE_WORDS:
         prevs = _prev_paras(para)
         if prevs:
@@ -466,16 +465,59 @@ def get_pre_text(table):
     return text
 
 
+_POST_DEF_START_RE = re.compile(
+    r"^\s*(?:where|with|here|in\s+which|in\s+this\s+notation)\b|"
+    r"^\s*\$[^$]{1,120}\$\s*(?:is|are|denotes?|represents?|stands?\s+for|"
+    r"refers?\s+to|corresponds?\s+to)\b",
+    re.I,
+)
+
+
+def _post_definition_block(text):
+    """Keep only the leading local symbol-definition block."""
+    result = []
+    for sent in _split_sentences(text or ""):
+        clean = re.sub(r"\s+", " ", sent).strip()
+        if not clean:
+            continue
+        if not result:
+            if _POST_DEF_START_RE.search(clean[:260]):
+                result.append(clean)
+            else:
+                break
+        elif _POST_DEF_START_RE.search(clean[:260]):
+            result.append(clean)
+        else:
+            break
+    return " ".join(result)
+
+
+def _nearest_pre_segment(text):
+    """Return prose after the last previous display equation marker."""
+    if not text:
+        return ""
+    parts = re.split(r"\[(?:EQ|TARGET)\]", text)
+    return _strip_markers(parts[-1] if parts else text)
+
+
+def _nearest_post_segment(text):
+    """Return prose before the next display equation marker."""
+    if not text:
+        return ""
+    parts = re.split(r"\[(?:EQ|TARGET)\]", text, maxsplit=1)
+    return _strip_markers(parts[0] if parts else text)
+
+
 def get_post_text(table):
-    """Return cleaned 'where...' prose immediately following `table`.
+    """Return cleaned local definition prose immediately following `table`.
 
     Many quantum physics papers display the equation first and then write
     "where $X$ is... and $Y$ is..." in the next sentence. That clause is
     the richest source of symbol definitions but lies AFTER the equation,
     outside the reach of get_pre_text().
 
-    Only returns text when 'where' appears in the first 80 characters, so
-    unrelated continuation paragraphs are not pulled in.
+    Only a leading definition block is returned. Ordinary explanatory prose is
+    handled separately by get_post_explanation().
 
     Parameters
     ----------
@@ -497,21 +539,14 @@ def get_post_text(table):
     p = deepcopy(para)
     for child in list(p)[:idx + 1]:
         p.remove(child)
-    text = _strip_markers(_clean_para(p, set())).strip()
+    text = _nearest_post_segment(_clean_para(p, set())).strip()
     # If the same-paragraph tail is thin, also grab the first following paragraph.
     if len(text.split()) < _MIN_PRE_WORDS:
         nexts = _next_paras(para)
         if nexts:
             nxt = _strip_markers(_clean_para(nexts[0], set())).strip()
             text = (text + " " + nxt).strip()
-    # Only return if 'where' appears near the start AND the text contains at
-    # least one math token ($...$) — confirms this is a symbol definition clause
-    # rather than a prose reference like "where the full derivation is in App. A".
-    if (text
-            and re.search(r"\bwhere\b", text[:80], re.I)
-            and re.search(r"\$[^$]+\$", text)):
-        return text
-    return ""
+    return _post_definition_block(text)
 
 
 def extract_abbreviation(pre_text):
@@ -737,7 +772,7 @@ def get_post_explanation(table):
     p = deepcopy(para)
     for child in list(p)[:idx + 1]:
         p.remove(child)
-    in_para = _strip_markers(_clean_para(p, set())).strip()
+    in_para = _nearest_post_segment(_clean_para(p, set())).strip()
     # Also try first following paragraph when in-para tail is thin.
     candidates = []
     if in_para:
@@ -760,8 +795,35 @@ def get_post_explanation(table):
     return ""
 
 
+def _arxiv_href_variants(eq_id):
+    """Return all plausible href values for an equation ID in arXiv LaTeXML HTML.
+
+    arXiv LaTeXML renders equation anchors with IDs like 'S2.E3', 'Sx1.E5',
+    'p3.E2', etc. but cross-reference hrefs can use '#S2.E3', '#eq:label',
+    '#equation.3', and the bare form. This function generates the candidate
+    set so the xpath query covers all formats without false positives.
+    """
+    variants = {f"#{eq_id}", eq_id}
+
+    # Pattern: Sx\d+.E\d+, S\d+.E\d+, p\d+.E\d+
+    # arXiv also uses shortened forms in hrefs: strip leading section prefix.
+    m = re.search(r"(?:S(?:x?\d+)?|p\d+)\.(E\d+[a-z]?)", eq_id)
+    if m:
+        variants.add(f"#{m.group(1).lower()}")  # e.g. #e3
+        variants.add(f"#{m.group(0)}")           # e.g. #S2.E3
+
+    # Some papers use eq_id as-is but with different case conventions.
+    variants.add(f"#{eq_id.lower()}")
+
+    return variants
+
+
 def get_cross_ref_context(eq_id, tree):
     """Find sentences elsewhere in the document that reference this equation.
+
+    Handles multiple arXiv LaTeXML href formats: '#S2.E3', '#Sx1.E3',
+    '#p3.E2', 'eq:label', and the bare element id. Falls back to the
+    first sentence of the referencing paragraph when no exact match is found.
 
     Parameters
     ----------
@@ -774,7 +836,17 @@ def get_cross_ref_context(eq_id, tree):
     """
     if not eq_id or tree is None:
         return ""
-    for ref in tree.xpath(f'//a[@href="#{eq_id}"]'):
+
+    href_variants = _arxiv_href_variants(eq_id)
+
+    # Build a single xpath that matches any of the href variants.
+    conditions = " or ".join(f'@href="{v}"' for v in sorted(href_variants))
+    try:
+        refs = tree.xpath(f'//a[{conditions}]')
+    except Exception:
+        refs = []
+
+    for ref in refs:
         para = _enclosing_para(ref)
         if para is None:
             continue
@@ -1015,308 +1087,14 @@ def _latex_display_name(latex, lhs_token=""):
 
 
 def _contextual_lhs_meaning(context, latex, lhs_token, eq_shape):
-    """Infer an equation-level meaning from local prose plus LaTeX shape.
+    """No topic-level meaning prior.
 
-    This is still rule-based and non-generative.  It avoids one-letter symbol
-    priors; the prose must name the role, or the LaTeX shape must be specific.
+    Earlier versions used a large domain-keyword cascade here. That caused the
+    pipeline to label equations by nearby topic words instead of by evidence
+    attached to the equation. Meaning is now derived only by the generic
+    lead-in, post-text, and cross-reference rules in _synthesize_meaning and
+    build_meaning.
     """
-    ctx = re.sub(r"\s+", " ", context or "").strip()
-    ctx_l = ctx.lower()
-    lat = latex or ""
-    lat_l = lat.lower()
-    lhs = _latex_display_name(lat, lhs_token)
-
-    if "clifford hierarchy" in ctx_l or lhs_token.startswith("mathrmcl"):
-        return "Defines the kth Clifford hierarchy.", "context_clifford_hierarchy"
-    if "controlled-z gate" in ctx_l or "controlled-z" in ctx_l:
-        return "Defines the controlled-Z gate action on computational-basis states.", "context_controlled_z"
-    if "hypergraph state" in ctx_l and ("\\ket" in lat or "\\sum" in lat):
-        return "Defines the hypergraph state in the computational basis.", "context_hypergraph_state"
-    if "noise convolution" in ctx_l or "p\\ast p" in lat_l or "p\\ast p" in lhs_token:
-        return "Defines the noise-convolution distribution.", "context_noise_convolution"
-    if "gibbs state" in ctx_l or "thermal equilibrium" in ctx_l and "\\rho" in lat_l and "e^{-" in lat_l:
-        return "Defines the Gibbs state at inverse temperature beta.", "context_gibbs_state"
-    if "kms condition" in ctx_l:
-        return "Gives the KMS condition for thermal correlation functions.", "context_kms_condition"
-    if "hafnian" in ctx_l or "operatorname{haf}" in lat_l:
-        return "Defines the Hafnian matrix function.", "context_hafnian"
-    if "permanent" in ctx_l or "operatorname{perm}" in lat_l:
-        return "Gives the boson-sampling output probability via the permanent.", "context_permanent_probability"
-    if "sampling matrix" in ctx_l and "covariance matrix" in ctx_l:
-        return "Gives the relation between the covariance matrix and the sampling matrix.", "context_sampling_covariance"
-    if "photon number" in ctx_l or "photon-number" in ctx_l or "operatorname{pr}" in lhs_token:
-        if "haf" in lat_l:
-            return "Gives the Gaussian boson-sampling output probability.", "context_gbs_probability"
-        return "Gives the output probability.", "context_probability_formula"
-    if "wigner function" in ctx_l or lhs_token.startswith("wleft"):
-        return "Gives the Wigner function of the Gaussian state.", "context_wigner_function"
-    if "symplectic form" in ctx_l or "symplectic matrix" in ctx_l or (lhs_token == "omega" and "\\begin{pmatrix}" in lat_l):
-        return "Defines the symplectic form.", "context_symplectic_form"
-    if "thermal state" in ctx_l and "\\rho" in lat_l:
-        return "Defines the thermal input state.", "context_thermal_state"
-    if "schrödinger" in ctx_l or "schrodinger" in ctx_l:
-        return "Gives the Schrödinger time-evolution equation.", "context_schrodinger_equation"
-    if "fidelity" in ctx_l and lhs_token.startswith("mathcalf"):
-        return "Defines the gate fidelity objective.", "context_fidelity"
-    if "infidelity" in ctx_l or lhs_token.startswith("mathcali"):
-        return "Defines the infidelity loss objective.", "context_infidelity"
-    if "block encoding" in ctx_l:
-        return "Defines the block-encoding unitary or approximation condition.", "context_block_encoding"
-    if "qsp protocol" in ctx_l or "quantum signal processing" in ctx_l or "m-qsp" in ctx_l:
-        return "Gives the quantum signal-processing circuit transformation.", "context_qsp_protocol"
-    if "distribution" in ctx_l and (lhs_token.startswith("f") or "sigma_delta" in lat_l or "\\sigma_{\\delta}" in lat_l):
-        return "Gives the probability distribution.", "context_distribution"
-    if "lennard-jones" in ctx_l or "leonard-jones" in ctx_l:
-        return "Gives the Lennard-Jones interaction potential.", "context_lennard_jones"
-    if "potential energy" in ctx_l and (lhs_token.startswith("u") or lhs_token.startswith("v") or lhs_token.startswith("mathcale")):
-        return "Gives the potential-energy expression.", "context_potential_energy"
-    if "multipole expansion" in ctx_l or "quadrupole moment" in ctx_l:
-        return "Gives the multipole-expansion expression.", "context_multipole_expansion"
-    if "casimir" in ctx_l or "polarizability" in ctx_l:
-        if lhs_token.startswith("u"):
-            return "Gives the multipole Casimir-Polder potential.", "context_casimir_polder"
-        return "Defines the multipole polarizability.", "context_polarizability"
-    if "finite-size scaling" in ctx_l or "scale with the system size" in ctx_l:
-        return "Gives the finite-size scaling relation.", "context_scaling_relation"
-    if "average number of detections" in ctx_l or "detections per pulse" in ctx_l:
-        return "Gives the average detections-per-pulse relation.", "context_detection_rate"
-    if "linear regression" in ctx_l or "representative number of ions" in ctx_l:
-        return "Gives the linear-regression estimator.", "context_linear_regression"
-    if "heaviside" in ctx_l or "\\mathrm{h}" in lat_l and "\\begin{cases}" in lat_l:
-        return "Defines the Heaviside step function.", "context_heaviside"
-    if "attack pattern" in ctx_l or "spike attacks" in ctx_l or "gradual attacks" in ctx_l:
-        return "Defines the attack-pattern time profile.", "context_attack_profile"
-    if "complex transmission coefficient" in ctx_l or lhs_token.startswith("s21"):
-        return "Gives the complex transmission coefficient near resonance.", "context_transmission_coefficient"
-    if "transmission coefficient" in ctx_l or "transmission probability" in ctx_l:
-        if "wkb" in ctx_l or "exponentially decaying" in ctx_l:
-            return "Gives the WKB transmission-probability factor.", "context_wkb_transmission"
-        return "Gives the transmission coefficient or probability.", "context_transmission_probability"
-    if "exponentially decaying" in ctx_l and lhs_token.startswith("t"):
-        return "Gives the WKB transmission-probability factor.", "context_wkb_transmission"
-    if "energy spectrum" in ctx_l or lhs_token.startswith("en,m"):
-        return "Gives the quantized energy spectrum.", "context_energy_spectrum"
-    if "current is obtained" in ctx_l or lhs_token.startswith("in,m"):
-        return "Gives the persistent current from the energy derivative.", "context_persistent_current"
-    if "bose-hubbard" in ctx_l and "hamiltonian" in ctx_l:
-        return "Gives the Bose-Hubbard Hamiltonian.", "context_bose_hubbard_hamiltonian"
-    if "translation operator" in ctx_l or lhs_token.startswith("hattmathbfu") or "\\hat{T}" in lat:
-        if "commutation relation" in ctx_l or "commutation" in ctx_l:
-            return "Gives the commutation relation between translation operators.", "context_translation_commutation"
-        if "composed" in ctx_l or "phase" in ctx_l and "\\hat{T}" in lat:
-            return "Gives the composition rule for translation operators.", "context_translation_composition"
-        return "Defines the phase-space translation operator.", "context_translation_operator"
-    if "stabilizer group" in ctx_l or "independent stabilizers" in ctx_l:
-        return "Defines the stabilizer group generated by translation operators.", "context_stabilizer_group"
-    if "dipole algebra" in ctx_l:
-        return "Gives the dipole-algebra symmetry relation.", "context_dipole_algebra"
-    if "symmetry generated" in ctx_l or "global symmetries" in ctx_l:
-        return "Defines the global symmetry generators.", "context_symmetry_generators"
-    if "gauss" in ctx_l and "law" in ctx_l:
-        return "Defines the Gauss-law constraint.", "context_gauss_law"
-    if "commutator relation" in ctx_l or "commutator relations" in ctx_l or "commutation relation" in ctx_l:
-        return "Gives the commutation relation.", "context_commutation_relation"
-    if "minimal observable length" in ctx_l and ("delta" in lhs_token or "\\Delta" in lat):
-        return "Gives the minimal-length uncertainty relation.", "context_minimal_length"
-    if "first-order accuracy" in ctx_l and (lhs_token.startswith("x") or lhs_token.startswith("p")):
-        return "Gives the first-order deformed position or momentum operator.", "context_deformed_operator"
-    if "non-resonant condition" in ctx_l:
-        return "Gives the non-resonance energy-gap condition.", "context_nonresonance"
-    if "lifetime" in ctx_l or "thermalization time" in ctx_l or re.search(r"t\s*\\sim", lat):
-        return "Gives the asymptotic time-scale estimate.", "context_timescale"
-    if "formal eigenstates" in ctx_l or re.match(r"\s*\|?E\\rangle", lat):
-        return "Gives the formal eigenstate expansion.", "context_eigenstate_expansion"
-    if "stochastic master equation" in ctx_l:
-        return "Gives the stochastic master equation for the monitored state.", "context_stochastic_master_equation"
-    if lhs_token.startswith("qt") and ("measurement record" in ctx_l or "represented by" in ctx_l):
-        return "Defines the continuous measurement readout signal.", "context_measurement_readout"
-    if lhs_token.startswith("hft") and "feedback hamiltonian" in ctx_l:
-        return "Defines the feedback Hamiltonian.", "context_feedback_hamiltonian"
-    if "master equation" in ctx_l and ("\\dot" in lat_l or "d\\rho" in lat_l or "dfrac" in lat_l):
-        return "Gives the master equation for the system density matrix.", "context_master_equation"
-    if "lindblad" in ctx_l and "\\mathcal{l}" in lat_l:
-        return "Defines the Lindblad dissipator.", "context_lindblad_dissipator"
-    if "hamiltonian" in ctx_l and lhs_token.startswith(("h", "calh", "mathcalh", "hat")):
-        if "component" in ctx_l or "term" in ctx_l or lhs_token in {"hatk", "hatd", "hd", "hc"}:
-            return "Defines a Hamiltonian term.", "context_hamiltonian_term"
-        return "Gives the Hamiltonian.", "context_hamiltonian"
-    if "wave function" in ctx_l and ("\\ket" in lat_l or "\\psi" in lat_l):
-        return "Defines the wave function.", "context_wave_function"
-    if "polynomial" in ctx_l and ("q_" in lat_l or lhs_token.startswith("qn")):
-        return "Defines the polynomial part of the wave function.", "context_wavefunction_polynomial"
-    if "work cost" in ctx_l or "landauer cost" in ctx_l:
-        return "Gives the work cost.", "context_work_cost"
-    if "performance recovery metric" in ctx_l:
-        return "Defines the performance recovery metric.", "context_performance_recovery"
-    if "speedup" in ctx_l and lhs_token.startswith("gamma"):
-        return "Defines the simulation speedup ratio.", "context_speedup"
-    if "deviation" in ctx_l and lhs_token.startswith("delta"):
-        return "Defines the relative deviation metric.", "context_deviation"
-
-    if lhs_token.startswith("mse") or "mean square error" in ctx_l or "mean squared error" in ctx_l:
-        return "Gives the mean squared error formula.", "context_mse"
-    if lhs_token.startswith("acc") or re.search(r"\baccuracy\s*(?:metric|score|\()", ctx_l):
-        return "Gives the accuracy score.", "context_accuracy"
-    if lhs_token.startswith("confidence"):
-        return "Defines the confidence score as the MSE difference.", "context_confidence"
-    if lhs_token.startswith("gt") or "cumulative return" in ctx_l:
-        return "Gives the discounted cumulative return.", "context_cumulative_return"
-    if "fake minimum energy" in ctx_l or "fakeminimumenergy" in lhs_token:
-        return "Defines the fake minimum energy target.", "context_fake_minimum_energy"
-    if "grammar" in ctx_l and ("dataset" in ctx_l or "likelihood" in ctx_l):
-        return "Defines the grammar scoring objective.", "context_grammar_score"
-    if "fitness" in ctx_l or "ga-based attack" in ctx_l or "p_{adv}" in lat:
-        return "Defines the adversarial attack fitness objective.", "context_attack_fitness"
-
-    if "universal functional" in ctx_l:
-        return "Defines the universal functional.", "context_universal_functional"
-    if "ground state energy and density" in ctx_l and "minimiz" in ctx_l:
-        return "Gives the variational minimization for the ground-state energy and density.", "context_variational_minimum"
-    if "external potential" in ctx_l and ("energy" in ctx_l or "\\mathcal{e}" in lat.lower()):
-        return "Defines the ground-state energy functional.", "context_energy_functional"
-
-    if "de-biased sum" in ctx_l or "debiased sum" in ctx_l:
-        return "Gives the de-biased sum output by the server.", "context_debiased_sum"
-    if "gaussian function" in ctx_l and ("f(" in lat or "f\\left" in lat):
-        return "Gives the Gaussian fit function.", "context_gaussian_fit"
-    if "magnetic field sensitivity" in ctx_l:
-        return "Gives the magnetic-field sensitivity formula.", "context_sensitivity"
-
-    if "\\omega" in lat and "\\sum" in lat and "\\begin{cases}" in lat:
-        return "Gives the root-of-unity summation identity.", "context_root_unity"
-    if "bell states" in ctx_l and "\\omega" in lat and ("\\ket" in lat or "\\rangle" in lat or "|" in lat):
-        return "Defines the generalized Bell states.", "context_bell_states"
-    if "spectral theorem" in ctx_l or "diagonalizable" in ctx_l:
-        return "Gives the spectral decomposition of a normal operator.", "context_spectral_decomposition"
-    if "spectral decomposition" in ctx_l and lhs:
-        return f"Gives the spectral decomposition of {lhs}.", "context_spectral_decomposition"
-    if "sum-of-squares" in ctx_l or ("\\sum" in lat and "p_{i}^{*}p_{i}" in lat_l):
-        return "Gives the sum-of-squares decomposition of the shifted operator.", "context_sum_of_squares"
-    if re.search(r"^\s*(?P<base>.+?)\^\s*\{?2\}?\s*=\s*(?P=base)(?:\b|\\|_|\^|\s|,|$)", lat) and lhs_token:
-        return "Gives the projector/idempotency condition.", "context_projector_condition"
-    if "\\operatorname{tr}_{b}" in lat_l or "partial trace" in ctx_l or "coherent state" in ctx_l:
-        return "Defines the projection superoperator onto the coherent bath state.", "context_projection_superoperator"
-    if eq_shape == "operator_action" and ("action" in ctx_l or "operation" in ctx_l or "operators on" in ctx_l or "combined operation" in ctx_l):
-        return "Gives the tensor-product action of operators on product states.", "shape_operator_action"
-    if "povm" in ctx_l and ("\\pi" in lat_l or "\\Pi" in lat):
-        return "Gives the POVM positivity and completeness condition.", "context_povm_condition"
-    if "operators can be explicitly represented" in ctx_l or ("measurement operators" in ctx_l and "pmatrix" in lat_l):
-        return "Gives the measurement-operator matrix representation.", "context_measurement_matrices"
-
-    if "low-energy effective hamiltonian" in ctx_l or "band-crossing point" in ctx_l:
-        return "Gives the low-energy effective Hamiltonian near a band-crossing point.", "context_low_energy_hamiltonian"
-    if lhs_token == "h" and ("\\sum" in lat or "h_" in lat_l or "\\lambda" in lat):
-        return "Gives the Hamiltonian decomposition.", "context_hamiltonian_decomposition"
-    if lhs_token.startswith("hi") or "interaction hamiltonian" in ctx_l:
-        return "Gives the interaction Hamiltonian.", "context_interaction_hamiltonian"
-    if "dissipator" in ctx_l:
-        return "Defines the dissipator superoperator.", "context_dissipator"
-    if "kinetic term" in ctx_l or "hopping" in ctx_l:
-        return "Gives the kinetic hopping term.", "context_kinetic_term"
-    if "interaction strength" in ctx_l or "interaction term" in ctx_l:
-        return "Defines the interaction term.", "context_interaction_term"
-    if "potential" in ctx_l and lhs_token.startswith("hatv"):
-        return "Defines the potential term.", "context_potential_term"
-    if "rydberg" in ctx_l and "repulsion" in ctx_l:
-        return "Defines the kink-modified Rydberg interaction term.", "context_rydberg_interaction"
-
-    if "gibbs state" in ctx_l and ("g_{\\beta}" in lat or "g_\\beta" in lat):
-        return "Defines the Gibbs state at inverse temperature beta.", "context_gibbs_state"
-    if "classical-quantum state" in ctx_l or lhs_token.startswith("rhotextae"):
-        return "Defines the classical-quantum post-measurement state.", "context_classical_quantum_state"
-    if "thermal expectation" in ctx_l or "observable" in ctx_l and "\\expectationvalue" in lat:
-        return "Gives the local observable expectation value matched to the Gibbs state.", "context_expectation_value"
-    if "local trace norm" in ctx_l or "\\norm{g_{\\beta}-\\psi(t)}" in lat:
-        return "Bounds the local trace-norm distance between the Gibbs and evolved states.", "context_trace_norm_bound"
-    if "ensemble" in ctx_l and "\\mathbb{E}" in lat and "\\norm" in lat:
-        return "Gives the ensemble-averaged thermalization criterion.", "context_ensemble_average"
-    if "gibbs ensemble" in ctx_l and "\\mathbb{E}" in lat:
-        return "Bounds closeness of the ensemble average to the Gibbs state.", "context_gibbs_ensemble"
-    if "energy dispersion" in ctx_l or "inverse participation ratio" in ctx_l:
-        return "Bounds the average inverse participation ratio in the energy eigenbasis.", "context_energy_dispersion"
-    if "maximally entangled state" in ctx_l and ("\\ket" in lat_l or "\\rangle" in lat_l or "|" in lat):
-        return "Gives the maximally entangled two-qubit state.", "context_max_entangled_state"
-    if "following measurements" in ctx_l and ("\\sigma" in lat or "sigma" in lat_l):
-        return "Gives the measurement settings realizing the maximal violation.", "context_measurement_settings"
-    if "arbitrary two-qubit state" in ctx_l or "correlation matrix" in ctx_l:
-        return "Gives the Bloch/correlation-matrix representation of a two-qubit state.", "context_two_qubit_state"
-    if "maximal quantum violation" in ctx_l or lhs_token.startswith("qs"):
-        return "Bounds the maximal quantum violation.", "context_quantum_violation_bound"
-    if "depolarization" in ctx_l and lhs_token.startswith("sigma"):
-        return "Gives the depolarized quantum state.", "context_depolarized_state"
-    if "robustness" in ctx_l and ("r_{dp}" in lat_l or lhs_token.startswith("t")):
-        return "Gives the robustness condition against depolarization noise.", "context_depolarization_robustness"
-    if "final state" in ctx_l and ("\\ket" in lat or "|\\phi" in lat_l):
-        return "Defines the final state after the unitary sequence.", "context_final_state"
-    if "ansätze" in ctx_l or "ansatze" in ctx_l or "data reuploading" in ctx_l:
-        return "Defines the data-reuploading unitary ansatz.", "context_unitary_ansatz"
-
-    if "\\rightarrow" in lat or "\\Leftrightarrow" in lat:
-        if "controlled phase gate" in ctx_l:
-            return "Gives the controlled phase-gate state transformations.", "context_controlled_phase"
-        if "phase shift" in ctx_l or "rabi oscillation" in ctx_l:
-            return "Gives the photon-atom phase-shift transformations.", "context_phase_shift"
-        if "pi/2" in ctx_l or "\\pi/2" in ctx_l or "rotations" in ctx_l:
-            return "Gives the state transformation under pi/2 rotations.", "context_rotation_transform"
-        if "teleportation" in ctx_l:
-            return "Lists the Bell-state-dependent teleported states.", "context_teleportation"
-        return "Gives the state transformation rules.", "shape_state_transform"
-    if "\\ket{a,b,p" in lat.lower() or "\\ket{a,b,p_" in lat.lower():
-        return "Gives the joint atom-photon entangled state.", "shape_entangled_state"
-    if "multiplex" in ctx_l or lhs_token.startswith("navg"):
-        return "Gives the average multiplexing expression.", "context_multiplexing"
-
-    if "probability-density function" in ctx_l or lhs_token.startswith("dns"):
-        return "Gives the modified phase-space probability density.", "context_phase_space_density"
-    if "phase-space volume" in ctx_l or lhs_token.startswith("mathcald"):
-        return "Defines the phase-space measure correction factor.", "context_phase_space_factor"
-    if "omm-induced correction" in ctx_l or lhs_token.startswith("xi"):
-        return "Defines the field-corrected band energy and velocity.", "context_band_energy"
-    if "electric-current density" in ctx_l or lhs_token.startswith("mathbfj"):
-        return "Gives the band contribution to the electric-current density.", "context_current_density"
-    if "distribution function" in ctx_l and lhs_token.startswith("f0"):
-        return "Defines the Fermi-Dirac distribution function.", "context_fermi_distribution"
-    if "average over all the possible electron states" in ctx_l:
-        return "Defines the average of a physical observable over electron states.", "context_observable_average"
-    if "coarse-grained" in ctx_l or "landau-ginzburg" in ctx_l and lhs_token.startswith("s0"):
-        return "Defines the coarse-grained Landau-Ginzburg action.", "context_landau_ginzburg_action"
-    if "correlation function" in ctx_l and "\\langle" in lat:
-        return "Gives the critical power-law correlation function.", "context_correlation_function"
-    if "operator version" in ctx_l or "order-by-order expansion" in ctx_l:
-        return "Gives the continuum-field expansion of the microscopic operator.", "context_operator_expansion"
-    if "two-point correlator" in ctx_l or lhs_token.startswith("deltaz"):
-        return "Defines the change in the one-point polarization measurement.", "context_delta_z"
-    if "noise term" in ctx_l and "\\langle" in lat and "\\vartheta" in lat:
-        return "Gives the noise correlation function.", "context_noise_correlation"
-    if "langevin equation" in ctx_l:
-        return "Gives the Langevin equation for the order parameter field.", "context_langevin"
-    if "ordinary differential equation" in ctx_l:
-        return "Gives the ordinary differential equation for the time-dependent order parameter.", "context_order_parameter_ode"
-    if "solved analytically" in ctx_l or "\\mathrm{erfi}" in lat_l:
-        return "Gives the analytic solution for the normalized order parameter.", "context_analytic_solution"
-    if "bernoulli differential equation" in ctx_l or "overdamped" in ctx_l:
-        return "Gives the overdamped Bernoulli differential equation.", "context_bernoulli_ode"
-    if "freeze-out time" in ctx_l or re.match(r"\s*\\hat\{t\}", lat):
-        return "Gives the freeze-out time scaling relation.", "context_freezeout_scaling"
-
-    if lhs_token.startswith("ei") and "theta" in lhs_token:
-        return "Gives the phase factor for the statistics process.", "context_statistics_phase"
-    if "shorter process" in ctx_l or "step process" in ctx_l:
-        return "Gives the operator sequence for the process.", "context_operator_sequence"
-    if "configuration axiom" in ctx_l:
-        return "Gives the configuration axiom action on states.", "context_configuration_axiom"
-    if "locality axiom" in ctx_l:
-        return "Gives the locality axiom commutator condition.", "context_locality_axiom"
-    if "t-junction process" in ctx_l:
-        return "Gives the T-junction excitation-operator process.", "context_t_junction"
-
-    if eq_shape == "bound_or_inequality":
-        if "bad rectangles" in ctx_l:
-            return "Bounds the total number of bad rectangles.", "context_bad_rectangles_bound"
-        if lhs:
-            return f"Bounds {lhs} under the stated conditions.", "shape_bound_lhs"
-        return "Gives an inequality bound under the stated conditions.", "shape_bound_generic"
-
     return "", ""
 
 
@@ -1391,7 +1169,7 @@ def _bad_subject(subj):
         return True
     if re.fullmatch(r"(?:which|that|this|these|those|following|above|below|same|result|expression|equation|formula)", s):
         return True
-    if re.match(r"^(?:which|that|where|as a result|the following|following|we see|it|and|or|but|for a system|our results)\b", s):
+    if re.match(r"^(?:which|that|where|such|so that|as a result|the following|following|we see|it|and|or|but|for a system|our results)\b", s):
         return True
     if re.search(r"\b(?:we see that the number|our results also hold|as written in the main text)\b", s):
         return True
@@ -1411,6 +1189,8 @@ def _bad_meaning_text(text):
     bad = [
         r"^Gives the (?:it|we\b|our\b|for a system\b)",
         r"^Gives (?:and|it|we\b|our\b)",
+        r"^Gives the such\b",
+        r"^Gives such\b",
         r"^Gives the .*our results also hold",
         r"^Gives the .*we see that the number",
         r"^Specifies attractive su\.?$",
@@ -1964,7 +1744,7 @@ def _synthesize_meaning(intro_sentence, lead_in_phrase, post_text, post_explanat
     """Convert local evidence into a meaning statement via slot-fill templates.
 
     Evidence priority: lead_in_phrase > intro_sentence > post_explanation >
-    first post_text sentence > post_text LHS mining > shape-based templates.
+    first post_text sentence > post_text LHS mining.
     LHS guard on the "define" rule prevents attributing a neighbouring symbol's
     definition to this equation. Returns ("", "none", "") when nothing matches.
 
@@ -2026,33 +1806,15 @@ def _synthesize_meaning(intro_sentence, lead_in_phrase, post_text, post_explanat
         if not _bad_meaning_text(result):
             return result, "post_lhs", post_text[:120]
 
-    # Shape-based fallbacks: fire when no prose trigger matched.
-    if eq_shape == "master_equation":
-        return "Gives the master equation for the system density matrix.", "shape_master_eq", latex[:60]
-    if eq_shape == "probability":
-        obj = named_eq or "outcome"
-        return f"Gives the probability of {obj}.", "shape_probability", latex[:60]
-    if eq_shape == "state_evolution":
-        return "Gives the time-evolved quantum state.", "shape_state_evolution", latex[:60]
-    if eq_shape == "bound_or_inequality":
-        # Only fire when we have a physics-meaningful subject (named_eq or lhs_name).
-        # Avoid using section title or generic hint as the bound subject.
-        subj = named_eq or lhs_name
-        if subj:
-            return f"Bounds {subj} under the stated conditions.", "shape_bound", latex[:60]
-    if eq_shape == "definition" and lhs_name:
-        return f"Defines the {lhs_name}.", "shape_definition", latex[:60]
-    if eq_shape == "hamiltonian_decomposition" and (lhs_name or named_eq):
-        target = named_eq or lhs_name
-        return f"Gives the {target}.", "shape_hamiltonian", latex[:60]
-
     return "", "none", ""
 
 
 def build_meaning(signals, symbol_defs, latex=""):
-    """Assemble the meaning string in priority order: inline label / theorem env,
-    then synthesis, then named_eq lexicon, then proof-step, then section fallback,
-    then cross-ref. Writes audit keys into signals as a side-effect.
+    """Assemble the meaning string from local evidence.
+
+    Priority order: inline label / theorem env, prose synthesis, proof-step,
+    lead-in direct quote, section fallback, then cross-ref. The named-equation
+    lexicon is not allowed to invent a meaning by itself.
 
     Parameters
     ----------
@@ -2098,9 +1860,13 @@ def build_meaning(signals, symbol_defs, latex=""):
         env_label = theorem_env if theorem_env else "result"
         id_clause = f"[{inline_label}] As a {env_label}: {theorem_title}."
         signals["_meaning_source"] = "inline_label+theorem"
+        signals["_meaning_rule"] = "inline_label_theorem"
+        signals["_meaning_evidence"] = f"{inline_label}; {theorem_title}"
     elif inline_label:
         id_clause = f"[{inline_label}]"
         signals["_meaning_source"] = "inline_label"
+        signals["_meaning_rule"] = "inline_label"
+        signals["_meaning_evidence"] = inline_label
     elif theorem_title:
         env_label = theorem_env if theorem_env else "result"
         if re.fullmatch(r"[IVXLCDM]+\.\d+\.?", theorem_title.strip(), re.I):
@@ -2110,6 +1876,8 @@ def build_meaning(signals, symbol_defs, latex=""):
         else:
             id_clause = f"As a {env_label}: {theorem_title}."
         signals["_meaning_source"] = "theorem"
+        signals["_meaning_rule"] = "theorem_title"
+        signals["_meaning_evidence"] = theorem_title
 
     # ---------- Priority 2: equation-level semantic synthesis ----------
     synth, rule, evidence = _synthesize_meaning(
@@ -2117,8 +1885,9 @@ def build_meaning(signals, symbol_defs, latex=""):
         latex, lhs_token, lhs_name, eq_shape,
         contained_section, named_eq, inline_label,
     )
-    signals["_meaning_rule"]     = rule
-    signals["_meaning_evidence"] = evidence
+    if synth or rule != "none" or evidence:
+        signals["_meaning_rule"]     = rule
+        signals["_meaning_evidence"] = evidence
 
     if synth:
         signals["_meaning_source"] = (
@@ -2128,15 +1897,8 @@ def build_meaning(signals, symbol_defs, latex=""):
             else "shape"
         )
 
-    # ---------- Priority 3: named equation lexicon fallback ----------
+    # ---------- Priority 3: named equation audit only ----------
     named_clause = ""
-    if not synth and named_eq:
-        named_clause = f"This is the {named_eq}."
-        if _bad_meaning_text(named_clause):
-            named_clause = ""
-        else:
-            signals["_meaning_rule"]   = "named_eq_fallback"
-            signals["_meaning_source"] = "named_eq"
 
     # ---------- Priority 4: proof-step fallback ----------
     proof_clause = ""
@@ -2146,28 +1908,53 @@ def build_meaning(signals, symbol_defs, latex=""):
         proof_clause = f"Intermediate step in proof of {target}."
         signals["_meaning_rule"]   = "proof_step_fallback"
         signals["_meaning_source"] = "proof_section"
+        signals["_meaning_evidence"] = contained_section
+
+    # ---------- Priority 4b: lead-in direct emission ----------
+    # When synthesis produced nothing (no prose trigger matched), emit the
+    # lead-in phrase or intro sentence verbatim. This is more informative than
+    # the section title since it contains the actual introducing verb phrase.
+    lead_in_direct = ""
+    if not synth and not named_clause and not proof_clause:
+        # Prefer lead_in_phrase (dangling sentence ending in a display trigger);
+        # fall back to intro_sentence when lead_in is absent.
+        for candidate in (lead_in_phrase, intro_sentence):
+            if not candidate:
+                continue
+            cleaned = _clean_intro(candidate)
+            if cleaned and len(cleaned.split()) >= 4 and not _bad_meaning_text(cleaned):
+                # Accept only if the candidate contains at least one content word
+                # beyond pure function words — avoids emitting "We have:" alone.
+                non_func = re.sub(r"\b(?:we|the|a|an|is|are|have|this|that|for|in|of|to|by|at|as|on)\b", "", cleaned.lower())
+                if len(non_func.split()) >= 2:
+                    lead_in_direct = cleaned + ("." if not cleaned.endswith(".") else "")
+                    signals["_meaning_rule"]   = "lead_in_direct"
+                    signals["_meaning_source"] = "lead_in" if (lead_in_phrase and candidate == lead_in_phrase) else "intro"
+                    signals["_meaning_evidence"] = cleaned
+                    break
 
     # ---------- Priority 5: section-title fallback ----------
     section_clause = ""
-    if not synth and not named_clause and not proof_clause:
+    if not synth and not named_clause and not proof_clause and not lead_in_direct:
         if contained_section and not section_is_generic:
             section_clause = f"From the '{contained_section}' section."
             signals["_meaning_rule"]  = "section_fallback"
             signals["_meaning_source"] = "section_fallback"
             signals["_section_fallback"] = True
+            signals["_meaning_evidence"] = contained_section
 
     # ---------- Assemble final string ----------
     parts = []
     if id_clause:
         parts.append(id_clause)
 
-    meaning_clause = synth or named_clause or proof_clause or section_clause
+    meaning_clause = synth or named_clause or proof_clause or lead_in_direct or section_clause
     if meaning_clause:
         parts.append(meaning_clause)
 
     # Abbreviation is supplemental context, appended only when synthesis also
     # produced something useful (prevents abbrev replacing empty meaning with noise).
-    if abbrev and (synth or named_clause):
+    if abbrev and synth:
         parts.append(f"Introduced in the context of {abbrev}.")
         if signals["_meaning_rule"] == "abbrev":
             pass  # already set
@@ -2178,6 +1965,7 @@ def build_meaning(signals, symbol_defs, latex=""):
         parts.append(f"Referenced as: {cross_ref}")
         signals["_meaning_rule"]   = "cross_ref"
         signals["_meaning_source"] = "cross_ref"
+        signals["_meaning_evidence"] = cross_ref
 
     return " ".join(parts)
 

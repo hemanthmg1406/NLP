@@ -200,18 +200,26 @@ def fetch_one(arxiv_id, rp):
     """
     CACHE_DIR.mkdir(exist_ok=True)
 
-    for kind in ("html", "pdf"):
-        path = _cache_path(arxiv_id, kind)
-        if _valid_cached_file(path, kind):
-            print(f"{arxiv_id}: cached ({kind}), skipping download")
-            return path, kind
-        if path.exists():
-            print(f"{arxiv_id}: cached {kind} failed validation; requesting a clean copy")
+    html_path = _cache_path(arxiv_id, "html")
+    if _valid_cached_file(html_path, "html"):
+        print(f"{arxiv_id}: cached (html), skipping download")
+        return html_path, "html"
+    if html_path.exists():
+        print(f"{arxiv_id}: cached html failed validation; requesting a clean copy")
+
+    pdf_path = _cache_path(arxiv_id, "pdf")
+    cached_pdf = _valid_cached_file(pdf_path, "pdf")
+    if pdf_path.exists() and not cached_pdf:
+        print(f"{arxiv_id}: cached pdf failed validation; requesting a clean copy")
 
     delay = getattr(rp, "effective_delay", MIN_CRAWL_DELAY + CRAWL_DELAY_MARGIN)
     user_agent = getattr(rp, "request_user_agent", None) or _user_agent()
 
     for kind, url_template in (("html", "/html/{}"), ("pdf", "/pdf/{}")):
+        if kind == "pdf" and cached_pdf:
+            print(f"{arxiv_id}: cached (pdf), no HTML available")
+            return pdf_path, "pdf"
+
         url = BASE + url_template.format(arxiv_id)
         if not rp.can_fetch(user_agent, url):
             print(f"{arxiv_id}: {kind} disallowed by robots.txt, skipping")

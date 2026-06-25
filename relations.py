@@ -1,22 +1,19 @@
 """Compute pairwise relations between enumerated equations in one paper.
 
-Five non-generative signals are fused via a monotone decision rule:
 1. Explicit cross-references: regex finds equation number patterns in context,
    spaCy parses the governing verb and maps it to a relation type via a cue lexicon.
-2. Definitional dependency: if LHS(B) is in identifiers(A), equation B defines
-   a quantity used in A — a directional strong relation.
-3. Structural similarity (TED): MathML trees compared with Zhang-Shasha. High
-   similarity with shared identifiers grades strong; without shared identifiers
-   it grades potential (parallel form).
+2. Definitional dependency: if the right-hand side of A uses the simple LHS
+   symbol defined by B, B is marked as a formula dependency of A.
+3. Structural similarity (TED): MathML trees compared with Zhang-Shasha.
+   Similarity can mark a parallel form, but does not create a strong relation.
 4. Symbol overlap (weighted Jaccard): 70% weight on exact normalized key match,
    30% on base-form match to preserve the operator/scalar distinction.
-5. Textual similarity (TF-IDF cosine): prose context vectorized with unigrams
-   and bigrams. Used only when Jaccard > 0; cosine alone is excluded because
-   boilerplate prose produces non-zero overlap for unrelated same-section equations.
+5. Textual similarity (SciBERT cosine): prose context encoded by
+   allenai/scibert_scivocab_uncased; mean-pooled last hidden state. Falls back
+   to TF-IDF when the model is unavailable. Used only as supporting evidence.
 
-Decision rule priority: explicit_ref > lhs_defines > TED >= TREE_SIM_STRONG
-> Jaccard >= JACCARD_POTENTIAL > TF-IDF cosine >= TFIDF_POTENTIAL (with j > 0)
-> none.
+Decision rule priority: explicit_ref > rhs_lhs_dependency > conservative potential
+signals > none. No topic-specific relation shortcuts are applied.
 """
 
 import re
@@ -27,13 +24,17 @@ import spacy
 
 from context import _split_sentences
 from mathml_tree import mathml_to_tree, tree_edit_distance
+from symbols import _latex_compact_identifiers, _latex_structured_identifiers
 
-# TF-IDF cosines are naturally smaller than neural cosines (sparse vectors, no
-# soft synonym similarity). Threshold calibrated on reviewed pairs: related
-# pairs reach 0.25-0.60, unrelated pairs stay below 0.15.
-TREE_SIM_STRONG   = 0.85
-TFIDF_POTENTIAL   = 0.20
-JACCARD_POTENTIAL = 0.40
+# SciBERT cosine similarity threshold. Neural embeddings produce higher baseline
+# cosines than TF-IDF (soft synonym overlap). Calibrated on reviewed pairs:
+# related pairs cluster at 0.80-0.95, unrelated same-section pairs at 0.65-0.75.
+TREE_SIM_STRONG    = 0.85
+SCIBERT_POTENTIAL  = 0.78
+JACCARD_POTENTIAL  = 0.55
+_MIN_SHARED_SYMBOLS = 2
+# Keep the old name as alias so any external import still works.
+TFIDF_POTENTIAL    = SCIBERT_POTENTIAL
 
 _CUE_LEXICON = {
     "substitute": "substitution",
@@ -50,8 +51,8 @@ _CUE_LEXICON = {
     "result":     "derivation",
     "simplify":   "equivalent",
     "equal":      "equivalent",
-    "rewrite":    "equivalent",
-    "express":    "equivalent",
+    "rewrite":    "derivation",
+    "express":    "derivation",
     "reduce":     "special case",
     "recover":    "special case",
     "specialize": "special case",
@@ -87,10 +88,27 @@ _NOTATION_PREFIXES = frozenset({
     "mathcal", "mathbb", "mathscr", "mathfrak", "mathbf", "mathsf"
 })
 
-_EQNUM_RE = re.compile(
-    r"(?:Eqs?\.?|eqs?\.?|[Ee]quations?)\s*\(?(\d+(?:\.\d+)?[a-z]?)\)?"
-    r"|"
-    r"\((\d+(?:\.\d+)?[a-z]?)\)"
+_PREFIXED_EQNUM_RE = re.compile(
+    r"\b(?:Eqs?\.?|eqs?\.?|[Ee]quations?|[Ff]ormulas?)\s*"
+    r"\(?\s*(\d+(?:\.\d+)?[a-z]?)\s*\)?"
+)
+
+_BARE_EQNUM_RE = re.compile(r"(?<![A-Za-z0-9])\((\d+(?:\.\d+)?[a-z]?)\)")
+
+_BARE_REF_CUE_RE = re.compile(
+    r"\b(?:above|below|by|combine[sd]?|derived?|eqs?\.?|equations?|follows?|"
+    r"formulae?|formulas?|from|insert(?:ing|ed)?|plug(?:ging|ged)?|prove|"
+    r"reference|relations?|show|shown|substitut(?:e|ed|ing)|suffices?|use[sd]?"
+    r"|using)\b",
+    re.I,
+)
+
+_DERIVATION_CONTEXT_RE = re.compile(
+    r"\b(?:as a result|becomes?|derivative of|derive[sd]?|differentiat(?:e|ed|ing)"
+    r"|follows?|from the|hence|net\s+\w+\s+becomes?|obtain(?:ed)?|reduce[sd]?"
+    r"|simplif(?:y|ies|ied)|therefore|thus|total\s+\w+\s+becomes?|we get|"
+    r"which gives|which yields|yields?)\b",
+    re.I,
 )
 
 _LHS_RE = re.compile(
@@ -99,37 +117,15 @@ _LHS_RE = re.compile(
     r"(?:_\{[^}]+\}|_[A-Za-z0-9])?))"
 )
 
-_ZPF_CUES = re.compile(
-    r'\b(?:zero[- ]?point\s+(?:fluctuation|motion|amplitude|flux)|'
-    r'vacuum\s+(?:fluctuation|coupling|noise)|'
-    r'zpf\b|x_\{?zpf\}?|'
-    r'single\s+(?:phonon|photon|magnon)\s+coupling|'
-    r'quantize|second\s+quantiz)',
-    re.I,
-)
-
-_CLASSICAL_DELTA_RE = re.compile(
-    r'\\delta\s*(?:[A-Za-z]|\{[^}]+\}|\\[A-Za-z]+)'
-)
-
-_ZPF_LATEX_RE = re.compile(
-    r'\\zeta|zpf|zero.?point|x_\{?(?:\\mathrm\{)?zpf|\\phi_\{?(?:\\mathrm\{)?zpf',
-    re.I,
-)
-
-_LIMIT_CUES = re.compile(
-    r'\b(?:continuum\s+limit|thermodynamic\s+limit|mean.?field|replace\s+the\s+sum'
-    r'|taking\s+[A-Z]\s*[→\-]\s*[∞\d]|density\s+of\s+states|infinite\s+volume'
-    r'|macroscopic|infinite[-\s]N|N\s*[→\-]\s*∞|ensemble\s+average'
-    r'|coarse.?grain|continuum\s+approximation)\b',
-    re.I,
-)
-
-_SUM_RE = re.compile(r'\\sum\b')
-_INT_RE = re.compile(r'\\int\b')
+_EQUALITY_RE = re.compile(r":=|\\coloneqq|\\equiv|(?<![<>])=(?!=)")
 
 _LAMBDA       = 0.5
 _REACH_THRESH = 0.2
+
+_WEAK_RELATION_SYMBOLS = frozenset({
+    "cal", "det", "dim", "exp", "iff", "log", "max", "min", "mod", "Pr",
+    "Re", "Im", "rm", "sgn", "sin", "cos", "tan", "tr", "Tr",
+})
 
 _nlp = None
 
@@ -182,6 +178,20 @@ def extract_lhs_symbol(latex):
     return key if key else None
 
 
+def _reference_type_from_window(window, default="explicit equation reference"):
+    """Classify a local equation-reference phrase without topic shortcuts."""
+    w = window.lower()
+    if re.search(r"\b(substitut(?:e|ed|ing)|insert(?:ing|ed)?|plug(?:ging|ged)?)\b", w):
+        return "substitution"
+    if re.search(r"\b(prove|show|suffices?)\b", w):
+        return "proof dependency"
+    if re.search(r"\b(combine[sd]?|from|using|used|by)\b", w):
+        return "uses referenced equation"
+    if re.search(r"\b(derive[sd]?|follows?|obtain(?:ed)?|result|yield(?:s|ed)?)\b", w):
+        return "derivation"
+    return default
+
+
 def _substitute_eqrefs(text, valid_numbers):
     """Replace equation number patterns with EQREF_N placeholder tokens.
 
@@ -190,16 +200,37 @@ def _substitute_eqrefs(text, valid_numbers):
     Returns (substituted_text, {eq_number: token_str}).
     """
     eqref_map = {}
+    replacements = []
 
-    def _replace(m):
-        num = m.group(1) or m.group(2)
-        if num in valid_numbers:
+    for pattern, require_cue in (
+        (_PREFIXED_EQNUM_RE, False),
+        (_BARE_EQNUM_RE, True),
+    ):
+        for m in pattern.finditer(text):
+            num = m.group(1)
+            if num not in valid_numbers:
+                continue
+            start, end = m.span()
+            window = text[max(0, start - 70): min(len(text), end + 70)]
+            if require_cue and not _BARE_REF_CUE_RE.search(window):
+                continue
+            if any(not (end <= s or start >= e) for s, e, _ in replacements):
+                continue
             token = f"EQREF_{num.replace('.', '_')}"
-            eqref_map[num] = token
-            return token
-        return m.group(0)
+            eqref_map[num] = (token, _reference_type_from_window(window))
+            replacements.append((start, end, token))
 
-    return _EQNUM_RE.sub(_replace, text), eqref_map
+    if not replacements:
+        return text, {}
+
+    pieces = []
+    cursor = 0
+    for start, end, token in sorted(replacements):
+        pieces.append(text[cursor:start])
+        pieces.append(token)
+        cursor = end
+    pieces.append(text[cursor:])
+    return "".join(pieces), eqref_map
 
 
 def _extract_cue_verb(text, eqref_token):
@@ -239,11 +270,6 @@ def find_explicit_refs(source_num, context_text, valid_numbers,
                        source_latex=None, latex_map=None):
     """Detect all equation cross-references in one equation's context text.
 
-    Two passes: (1) regex + spaCy to find '(N)' patterns and classify the
-    governing cue verb; (2) limit-transformation pass that checks for
-    discrete-to-continuum cue phrases paired with complementary aggregate
-    operator types (sum vs integral) across referenced equations.
-
     Returns {target_num: relation_type_str} for all referenced equations found.
     """
     others = valid_numbers - {source_num}
@@ -251,19 +277,10 @@ def find_explicit_refs(source_num, context_text, valid_numbers,
         return {}
 
     substituted, eqref_map = _substitute_eqrefs(context_text, others)
-    refs = {target_num: _extract_cue_verb(substituted, token)
-            for target_num, token in eqref_map.items()}
-
-    if source_latex is not None and latex_map and _LIMIT_CUES.search(context_text):
-        src_is_sum = bool(_SUM_RE.search(source_latex))
-        src_is_int = bool(_INT_RE.search(source_latex))
-        for num in others:
-            tgt_latex = latex_map.get(num, "")
-            tgt_is_sum = bool(_SUM_RE.search(tgt_latex))
-            tgt_is_int = bool(_INT_RE.search(tgt_latex))
-            if (src_is_sum and tgt_is_int) or (src_is_int and tgt_is_sum):
-                if num not in refs:
-                    refs[num] = "limit transformation"
+    refs = {}
+    for target_num, (token, local_type) in eqref_map.items():
+        parsed_type = _extract_cue_verb(substituted, token)
+        refs[target_num] = parsed_type if parsed_type != "reference" else local_type
 
     return refs
 
@@ -299,13 +316,196 @@ def weighted_jaccard(ids_a, ids_b):
     return 0.7 * j_exact + 0.3 * j_base
 
 
-def build_tfidf_matrix(texts):
-    """Fit TF-IDF on equation prose contexts and return an L2-normalised dense matrix.
+def _relation_symbol_is_informative(symbol):
+    """Filter notation tokens that are too weak for relation evidence."""
+    if not symbol:
+        return False
+    if symbol in _WEAK_RELATION_SYMBOLS:
+        return False
+    if len(symbol) == 1:
+        return False
+    if re.fullmatch(r"d[a-z]", symbol):
+        return False
+    letters = re.sub(r"[^A-Za-z]", "", symbol)
+    if len(letters) <= 1:
+        return False
+    return True
 
-    Uses sublinear_tf and unigrams+bigrams. No stop-word removal: physics prose
-    reuses "is", "the", "where" in definitional sentences and removing them
-    destroys the signal. min_df=1 because the corpus is at most 7 documents.
+
+def _has_overlap_evidence(shared_ids):
+    """Return True when shared symbols are specific enough to link equations."""
+    shared_ids = {s for s in shared_ids if _relation_symbol_is_informative(s)}
+    if len(shared_ids) >= _MIN_SHARED_SYMBOLS:
+        return True
+    return any("_" in s and len(re.sub(r"[^A-Za-z]", "", s)) >= 2
+               for s in shared_ids)
+
+
+def _rhs_identifier_set(latex):
+    """Return structured identifiers from the right-hand side of an equation."""
+    if not latex or not _EQUALITY_RE.search(latex):
+        return set()
+    parts = _EQUALITY_RE.split(latex, maxsplit=1)
+    rhs = parts[1] if len(parts) == 2 else ""
+    return _latex_structured_identifiers(rhs) | _latex_compact_identifiers(rhs)
+
+
+def _lhs_identifier_set(latex):
+    """Return normalized identifiers from the left-hand side of an equation."""
+    if not latex or not _EQUALITY_RE.search(latex):
+        return set()
+    lhs = _EQUALITY_RE.split(latex, maxsplit=1)[0]
+    return _latex_structured_identifiers(lhs) | _latex_compact_identifiers(lhs)
+
+
+def _clear_lhs_identifier_set(latex):
+    """Return LHS identifiers only when the LHS is a clear defined quantity.
+
+    This intentionally rejects function applications, products, limits, bras/kets,
+    and bracketed cocycles. Their LHS contains many bound variables, which creates
+    false strong edges when those variables recur later.
     """
+    if not latex or not _EQUALITY_RE.search(latex):
+        return set()
+    lhs = _EQUALITY_RE.split(latex, maxsplit=1)[0].strip()
+    if not lhs:
+        return set()
+    if re.match(r"^\\(?:begin|lim|prod|sum|int)(?:\b|_)", lhs):
+        return set()
+    if lhs.startswith("[") or re.search(r"\\(?:ket|bra|braket)\b", lhs):
+        return set()
+    if re.search(r"(?<![_A-Za-z])\(", lhs) or r"\left(" in lhs:
+        return set()
+
+    ids = _lhs_identifier_set(latex)
+    candidates = {
+        s for s in ids
+        if _relation_symbol_is_informative(s) or (len(s) == 1 and s.isupper())
+    }
+    if len(candidates) == 1:
+        return candidates
+    return set()
+
+
+def _symbol_matches_with_notation_prefix(symbol, ids):
+    """Match a normalized symbol against RHS identifiers with notation aliases."""
+    if symbol in ids:
+        return True
+    parts = symbol.split("_", 1)
+    if len(parts) == 2 and parts[0] in _NOTATION_PREFIXES:
+        return parts[1] in ids
+    for ident in ids:
+        iparts = ident.split("_", 1)
+        if len(iparts) == 2 and iparts[0] in _NOTATION_PREFIXES:
+            if iparts[1] == symbol:
+                return True
+    return False
+
+
+def _lhs_sets_match(lhs_ids, rhs_ids):
+    """True when one clear LHS identifier is reused on another equation RHS."""
+    for sym in lhs_ids:
+        if not _relation_symbol_is_informative(sym):
+            continue
+        if _symbol_matches_with_notation_prefix(sym, rhs_ids):
+            return True
+    return False
+
+
+def _lhs_rollup_match(lhs_a, lhs_b):
+    """Detect aggregate/specific LHS pairs such as I and I_n_m."""
+    for a in lhs_a:
+        for b in lhs_b:
+            if a == b:
+                continue
+            if len(a) == 1 and a.isupper() and b.startswith(a + "_"):
+                return True
+            if len(b) == 1 and b.isupper() and a.startswith(b + "_"):
+                return True
+    return False
+
+
+def _has_adjacent_derivation(context, shared_ids, lhs_a, lhs_b):
+    """High-precision derivation cue for immediately consecutive equations."""
+    if not context or not _DERIVATION_CONTEXT_RE.search(context):
+        return False
+    informative_shared = {
+        s for s in shared_ids
+        if _relation_symbol_is_informative(s)
+    }
+    return _lhs_rollup_match(lhs_a, lhs_b) and bool(informative_shared)
+
+
+_scibert_model = None
+_scibert_tokenizer = None
+_scibert_available = None  # None = untested, False = unavailable, True = loaded
+
+
+def _load_scibert():
+    """Load allenai/scibert_scivocab_uncased on first call.
+
+    Uses HuggingFace transformers with CUDA when available, CPU otherwise.
+    Sets _scibert_available to False on failure so subsequent calls skip loading.
+    Returns (tokenizer, model) or (None, None).
+    """
+    global _scibert_model, _scibert_tokenizer, _scibert_available
+    if _scibert_available is False:
+        return None, None
+    if _scibert_available is True:
+        return _scibert_tokenizer, _scibert_model
+    try:
+        import torch
+        from transformers import AutoTokenizer, AutoModel
+        model_name = "allenai/scibert_scivocab_uncased"
+        _scibert_tokenizer = AutoTokenizer.from_pretrained(model_name)
+        _scibert_model = AutoModel.from_pretrained(model_name)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        _scibert_model = _scibert_model.to(device)
+        _scibert_model.eval()
+        _scibert_available = True
+    except Exception:
+        _scibert_available = False
+        return None, None
+    return _scibert_tokenizer, _scibert_model
+
+
+def _scibert_embed(texts):
+    """Encode a list of strings with SciBERT and return an L2-normalised matrix.
+
+    Mean-pools the last hidden state over non-padding tokens. Falls back to
+    TF-IDF when SciBERT is unavailable so the pipeline degrades gracefully.
+    Returns (matrix, source_label) where source_label is 'scibert' or 'tfidf'.
+    """
+    tok, model = _load_scibert()
+    if tok is None:
+        return _tfidf_fallback(texts), "tfidf"
+
+    import torch
+    device = next(model.parameters()).device
+    embeddings = []
+    with torch.no_grad():
+        for text in texts:
+            inputs = tok(
+                text[:512],
+                return_tensors="pt",
+                truncation=True,
+                max_length=128,
+                padding=True,
+            )
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            out = model(**inputs)
+            mask = inputs["attention_mask"].unsqueeze(-1).float()
+            emb = (out.last_hidden_state * mask).sum(1) / mask.sum(1)
+            embeddings.append(emb.squeeze(0).cpu().numpy())
+
+    mat = np.array(embeddings, dtype=np.float32)
+    norms = np.linalg.norm(mat, axis=1, keepdims=True)
+    norms = np.where(norms == 0, 1.0, norms)
+    return mat / norms, "scibert"
+
+
+def _tfidf_fallback(texts):
+    """TF-IDF L2-normalised matrix as a fallback when SciBERT is unavailable."""
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.preprocessing import normalize
 
@@ -320,57 +520,91 @@ def build_tfidf_matrix(texts):
     return normalize(sparse, norm="l2").toarray()
 
 
+def build_tfidf_matrix(texts):
+    """Compatibility shim: returns (matrix, 'tfidf'). Prefer _scibert_embed."""
+    return _tfidf_fallback(texts), "tfidf"
+
+
 def tfidf_cosine(matrix, i, j):
-    """Cosine similarity between rows i and j of an L2-normalised TF-IDF matrix."""
+    """Cosine similarity between rows i and j of an L2-normalised matrix."""
     return float(np.dot(matrix[i], matrix[j]))
 
 
 def classify_relation(tree_sim, jaccard_sim, cosine_sim,
                       explicit_ref_type=None, shared_ids=None,
-                      lhs_defines=False):
-    """Assign a relation grade and description via the monotone decision rule.
+                      lhs_dependency=False, same_section=True,
+                      adjacent_derivation=False,
+                      cosine_source="scibert"):
+    """Assign a relation grade and description via a conservative decision rule.
 
-    Priority order: explicit_ref > lhs_defines > TED strong > TED potential
-    (parallel form) > Jaccard >= JACCARD_POTENTIAL > TF-IDF (with j > 0) > none.
+    Only explicit references and RHS-to-LHS formula dependency produce strong
+    edges. Tree/Jaccard/cosine evidence can produce potential edges, and only
+    when the shared symbols are specific enough to avoid common-notation
+    matches.
+
     Returns (grade, description); description is empty string for 'none'.
     """
     if shared_ids is None:
         shared_ids = set()
+    shared_ids = {s for s in shared_ids if _relation_symbol_is_informative(s)}
+    has_overlap_evidence = _has_overlap_evidence(shared_ids)
 
     if explicit_ref_type is not None:
         return "strong", explicit_ref_type
 
-    if lhs_defines:
-        return "strong", "defines component"
+    if lhs_dependency:
+        return "strong", "uses defined quantity"
+
+    if adjacent_derivation:
+        return "strong", "adjacent derivation"
 
     if tree_sim >= TREE_SIM_STRONG:
-        if shared_ids:
+        if shared_ids and has_overlap_evidence and same_section:
             sym_str = ", ".join(sorted(shared_ids)[:4])
-            return "strong", f"equivalent — shared form and symbols ({sym_str})"
+            return "potential", f"parallel form with shared symbols ({sym_str}) [tree_sim={tree_sim:.2f}]"
         return "potential", f"parallel form [tree_sim={tree_sim:.2f}]"
 
-    if jaccard_sim >= JACCARD_POTENTIAL:
-        sym_str = ", ".join(sorted(shared_ids)[:4]) if shared_ids else ""
-        label = f"shared symbols ({sym_str})" if sym_str else "overlapping notation"
-        return "potential", f"{label} [j={jaccard_sim:.2f}]"
+    if same_section and has_overlap_evidence and jaccard_sim >= JACCARD_POTENTIAL:
+        sym_str = ", ".join(sorted(shared_ids)[:4])
+        return "potential", f"shared symbols ({sym_str}) [j={jaccard_sim:.2f}]"
 
-    if cosine_sim >= TFIDF_POTENTIAL and jaccard_sim > 0:
-        sym_str = ", ".join(sorted(shared_ids)[:4]) if shared_ids else ""
-        label = (f"shared symbols ({sym_str}), contextually related"
-                 if sym_str else "contextually related")
-        return "potential", f"{label} [tfidf={cosine_sim:.2f}, j={jaccard_sim:.2f}]"
+    if (same_section and has_overlap_evidence and
+            cosine_sim >= SCIBERT_POTENTIAL and
+            jaccard_sim >= JACCARD_POTENTIAL):
+        sym_str = ", ".join(sorted(shared_ids)[:4])
+        return "potential", (
+            f"shared symbols ({sym_str}), contextually related "
+            f"[{cosine_source}={cosine_sim:.2f}, j={jaccard_sim:.2f}]"
+        )
 
     return "none", ""
 
 
+def _top_section(section_name):
+    """Return the top-level section label (e.g. 'Model' from 'Model.Subsection').
+
+    arXiv LaTeXML section titles are often compound strings; strip everything
+    after the first separator to get the root section for cross-section comparison.
+    """
+    if not section_name:
+        return ""
+    # Split on period, colon, dash or em-dash that separates a section hierarchy.
+    return re.split(r"[.:]\s*|\s+[-–—]\s+", section_name.strip())[0].strip().lower()
+
+
 def build_relations(equations, table_index, tree, pre_texts,
-                    post_texts, identifiers_map):
+                    post_texts, identifiers_map, section_map=None):
     """Compute all pairwise relations for the equations in one paper.
 
     Called once per paper after per-equation signals are extracted. Reuses
     pre_texts, post_texts, and identifiers from build_json.process_paper to
-    avoid redundant DOM traversal. Returns {eq_number: {other_number: {grade,
-    description}}} with an entry for every pair including grade 'none'.
+    avoid redundant DOM traversal.
+
+    section_map is an optional {eq_number: section_title} dict used for the
+    section-distance guard. When absent, the guard is skipped.
+
+    Returns {eq_number: {other_number: {grade, description}}} with an entry
+    for every pair including grade 'none'.
     """
     numbers = [eq["number"] for eq in equations]
     n = len(numbers)
@@ -381,6 +615,12 @@ def build_relations(equations, table_index, tree, pre_texts,
 
     valid_numbers = set(numbers)
     latex_map = {eq["number"]: eq["latex"] for eq in equations}
+    rhs_ids_map = {num: _rhs_identifier_set(latex)
+                   for num, latex in latex_map.items()}
+    lhs_ids_map = {num: _lhs_identifier_set(latex)
+                   for num, latex in latex_map.items()}
+    clear_lhs_ids_map = {num: _clear_lhs_identifier_set(latex)
+                         for num, latex in latex_map.items()}
 
     explicit_refs = {}
     for eq in equations:
@@ -411,7 +651,7 @@ def build_relations(equations, table_index, tree, pre_texts,
         ((pre_texts.get(num) or "") + " " + (post_texts.get(num) or "")).strip()
         for num in numbers
     ]
-    tfidf_mat = build_tfidf_matrix(prose_texts)
+    embed_mat, embed_source = _scibert_embed(prose_texts)
     num_idx = {num: i for i, num in enumerate(numbers)}
 
     # Symbols appearing in more than 70% of equations (minimum 3) are
@@ -420,98 +660,111 @@ def build_relations(equations, table_index, tree, pre_texts,
                        for sym in (identifiers_map.get(num) or []))
     freq_stop = {sym for sym, cnt in sym_freq.items()
                  if cnt > 0.70 * n and cnt >= 3}
-    if freq_stop:
-        print(f"  jaccard stop-list ({len(freq_stop)} symbols): {sorted(freq_stop)}")
 
-    lhs_strong_pairs = set()
+    # Build top-section lookup for section-distance guard.
+    top_sections = {}
+    if section_map:
+        for num in numbers:
+            top_sections[num] = _top_section(section_map.get(num, ""))
 
     for i, num_a in enumerate(numbers):
-        ids_a = identifiers_map.get(num_a) or []
+        ids_a   = identifiers_map.get(num_a) or []
+        latex_a = latex_map.get(num_a, "")
         for j, num_b in enumerate(numbers):
             if i == j:
                 continue
 
-            ids_b   = identifiers_map.get(num_b) or []
+            ids_b    = identifiers_map.get(num_b) or []
+            latex_b  = latex_map.get(num_b, "")
             ref_type = explicit_refs.get((num_a, num_b))
 
             lhs_b = lhs_map.get(num_b)
-            lhs_defines = False
-            if lhs_b:
-                ids_a_set = set(ids_a)
-                if lhs_b in ids_a_set:
-                    lhs_defines = True
-                else:
-                    parts = lhs_b.split("_", 1)
-                    if len(parts) == 2 and parts[0] in _NOTATION_PREFIXES:
-                        lhs_defines = parts[1] in ids_a_set
+            lhs_dependency = False
+            adjacent_derivation = False
+
+            # Section-distance guard: equations in different top-level sections
+            # share common algebra symbols legitimately but are usually not
+            # directly related. A Jaccard or cosine-only strong grade is
+            # downgraded to potential when sections differ.
+            same_section = True
+            if top_sections:
+                sec_a = top_sections.get(num_a, "")
+                sec_b = top_sections.get(num_b, "")
+                if sec_a and sec_b and sec_a != sec_b:
+                    same_section = False
 
             t_sim = tree_edit_distance(math_trees[num_a], math_trees[num_b])
 
-            ids_a_filt = [s for s in ids_a if s not in freq_stop]
-            ids_b_filt = [s for s in ids_b if s not in freq_stop]
-            j_sim   = weighted_jaccard(ids_a_filt, ids_b_filt)
-            c_sim   = tfidf_cosine(tfidf_mat, num_idx[num_a], num_idx[num_b])
-            shared  = set(ids_a_filt) & set(ids_b_filt)
+            ids_a_filt = [
+                s for s in ids_a
+                if s not in freq_stop and _relation_symbol_is_informative(s)
+            ]
+            ids_b_filt = [
+                s for s in ids_b
+                if s not in freq_stop and _relation_symbol_is_informative(s)
+            ]
+            j_sim  = weighted_jaccard(ids_a_filt, ids_b_filt)
+            c_sim  = tfidf_cosine(embed_mat, num_idx[num_a], num_idx[num_b])
+            shared = set(ids_a_filt) & set(ids_b_filt)
+
+            rhs_ids_a = {
+                s for s in rhs_ids_map.get(num_a, set())
+                if s not in freq_stop and _relation_symbol_is_informative(s)
+            }
+
+            if i > j:
+                clear_lhs_b = {
+                    s for s in clear_lhs_ids_map.get(num_b, set())
+                    if s not in freq_stop
+                }
+                if (lhs_b and lhs_b not in freq_stop and
+                        _relation_symbol_is_informative(lhs_b)):
+                    lhs_dependency = _symbol_matches_with_notation_prefix(
+                        lhs_b, rhs_ids_a
+                    )
+                if not lhs_dependency:
+                    lhs_dependency = _lhs_sets_match(clear_lhs_b, rhs_ids_a)
+                if lhs_dependency and clear_lhs_b:
+                    for k in range(j + 1, i):
+                        intervening = {
+                            s for s in clear_lhs_ids_map.get(numbers[k], set())
+                            if s not in freq_stop
+                        }
+                        if clear_lhs_b & intervening:
+                            lhs_dependency = False
+                            break
+
+            if not lhs_dependency and i == j + 1 and same_section:
+                lhs_a_set = clear_lhs_ids_map.get(num_a, set())
+                lhs_b_set = clear_lhs_ids_map.get(num_b, set())
+                formula_shared = (
+                    (set(ids_a_filt) & set(ids_b_filt)) |
+                    (rhs_ids_a & {
+                        s for s in rhs_ids_map.get(num_b, set())
+                        if s not in freq_stop and _relation_symbol_is_informative(s)
+                    })
+                )
+                context_a = (
+                    (pre_texts.get(num_a) or "") + " " +
+                    (post_texts.get(num_a) or "")
+                ).strip()
+                adjacent_derivation = _has_adjacent_derivation(
+                    context_a, formula_shared, lhs_a_set, lhs_b_set
+                )
 
             grade, desc = classify_relation(
-                t_sim, j_sim, c_sim, ref_type, shared, lhs_defines
+                t_sim, j_sim, c_sim, ref_type, shared, lhs_dependency,
+                same_section=same_section,
+                adjacent_derivation=adjacent_derivation,
+                cosine_source=embed_source,
             )
-
-            if grade == "strong" and lhs_defines and ref_type is None:
-                lhs_strong_pairs.add((num_a, num_b))
 
             entry = {"grade": grade}
             if desc:
                 entry["description"] = desc
             result[num_a][num_b] = entry
 
-    # Classical-to-quantum (ZPF) derivation: classical equations contain
-    # delta-prefixed symbols (δω, δΦ); the quantum counterpart evaluates that
-    # at one zero-point fluctuation. TED and Jaccard fail here because symbols
-    # change completely. Detection uses each equation's own LaTeX, not shared
-    # context text.
-    zpf_nums = {eq["number"] for eq in equations if _ZPF_LATEX_RE.search(eq["latex"])}
-    classical_delta_nums = {eq["number"] for eq in equations
-                            if _CLASSICAL_DELTA_RE.search(eq["latex"])}
-    if zpf_nums and classical_delta_nums:
-        print(f"  ZPF equations: {sorted(zpf_nums)}, "
-              f"classical-delta equations: {sorted(classical_delta_nums)}")
-    for q_num in zpf_nums:
-        for c_num in classical_delta_nums:
-            if c_num == q_num:
-                continue
-            for src, tgt, label in [
-                (c_num, q_num, "classical-to-quantum derivation"),
-                (q_num, c_num, "quantum coupling derived from classical expression"),
-            ]:
-                if result.get(src, {}).get(tgt, {}).get("grade") != "strong":
-                    result[src][tgt] = {"grade": "strong", "description": label}
-
-    # Bidirectional definitional dependency: if B defines a component of A,
-    # then from B's perspective A is the equation that depends on what B defines.
-    for num_a, num_b in lhs_strong_pairs:
-        if result.get(num_b, {}).get(num_a, {}).get("grade") != "strong":
-            result[num_b][num_a] = {
-                "grade": "strong",
-                "description": "component used in derivation",
-            }
-
-    # Bidirectionalize all strong pairs. A mathematical dependency between two
-    # equations is symmetric: the referenced equation is as related to the
-    # referencing one as vice versa.
-    for num_a in numbers:
-        for num_b in numbers:
-            if num_a == num_b:
-                continue
-            if result.get(num_a, {}).get(num_b, {}).get("grade") == "strong":
-                if result.get(num_b, {}).get(num_a, {}).get("grade") != "strong":
-                    fwd_desc = result[num_a][num_b].get("description", "strong relation")
-                    result[num_b][num_a] = {
-                        "grade": "strong",
-                        "description": f"bidirectional: {fwd_desc}",
-                    }
-
-    return _dag_reachability(result, numbers)
+    return result
 
 
 def _dag_reachability(relations, numbers):
